@@ -4,20 +4,41 @@ import type { User, Session } from '@supabase/supabase-js'
 
 export interface CustomerProfile {
   id: string
-  auth_user_id: string
-  first_name: string
-  last_name: string
-  email: string
-  scancode: string
+  auth_user_id: string | null
+  first_name: string | null
+  last_name: string | null
+  email: string | null
+  qr_token: string | null
   balance: number
   location_id: string | null
+  org_id: string | null
+  is_active: boolean
   created_at: string
+}
+
+export interface CustomerLocation {
+  id: string
+  customer_id: string
+  location_id: string
+  org_id: string
+  is_home: boolean
+  first_visited_at: string
+  last_visited_at: string
+  location: {
+    id: string
+    name: string
+    code: string | null
+    signup_token: string | null
+    city: string | null
+    state: string | null
+  }
 }
 
 interface AuthState {
   user: User | null
   session: Session | null
   customerProfile: CustomerProfile | null
+  savedLocations: CustomerLocation[]
   loading: boolean
   needsProfileSetup: boolean
 
@@ -27,15 +48,45 @@ interface AuthState {
   signOut: () => Promise<void>
   completeProfileSetup: (firstName: string, lastName: string) => Promise<{ error: string | null }>
   fetchCustomerProfile: (userId: string) => Promise<CustomerProfile | null>
+  fetchSavedLocations: (customerId: string) => Promise<void>
+  connectLocation: (token: string) => Promise<{ error: string | null; locationName?: string }>
+  setHomeLocation: (customerLocationId: string) => Promise<{ error: string | null }>
 }
 
-const generateScancode = () =>
+const generateQrToken = () =>
   Math.floor(1000000000000000 + Math.random() * 9000000000000000).toString()
+
+async function createCustomerRecord(params: {
+  authUserId: string
+  firstName: string
+  lastName: string
+  email: string
+}): Promise<{ data: CustomerProfile | null; error: string | null }> {
+  const qr_token = generateQrToken()
+
+  const { data: customer, error } = await supabase
+    .from('customers')
+    .insert({
+      auth_user_id: params.authUserId,
+      first_name: params.firstName,
+      last_name: params.lastName,
+      email: params.email,
+      qr_token,
+      is_active: true,
+      // org_id intentionally omitted — assigned when customer connects to a location
+    })
+    .select()
+    .single()
+
+  if (error) return { data: null, error: error.message }
+  return { data: customer as CustomerProfile, error: null }
+}
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   session: null,
   customerProfile: null,
+  savedLocations: [],
   loading: true,
   needsProfileSetup: false,
 
@@ -50,6 +101,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         needsProfileSetup: !profile,
         loading: false,
       })
+      if (profile) {
+        get().fetchSavedLocations(profile.id)
+      }
     } else {
       set({ loading: false })
     }
@@ -63,8 +117,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           customerProfile: profile,
           needsProfileSetup: !profile,
         })
+        if (profile) {
+          get().fetchSavedLocations(profile.id)
+        }
       } else {
-        set({ user: null, session: null, customerProfile: null, needsProfileSetup: false })
+        set({ user: null, session: null, customerProfile: null, savedLocations: [], needsProfileSetup: false })
       }
     })
   },
@@ -80,15 +137,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return data as CustomerProfile
   },
 
+  fetchSavedLocations: async (customerId: string) => {
+    const { data, error } = await supabase
+      .from('customer_locations')
+      .select(`
+        *,
+        location:locations(id, name, code, signup_token, city, state)
+      `)
+      .eq('customer_id', customerId)
+      .order('is_home', { ascending: false })
+      .order('last_visited_at', { ascending: false })
+
+    if (!error && data) {
+      set({ savedLocations: data as CustomerLocation[] })
+    }
+  },
+
   signUp: async (email, password, firstName, lastName) => {
-    // Try to create a new auth account
     const { data, error } = await supabase.auth.signUp({ email, password })
 
     if (error) {
-      // If email already exists, Supabase returns a specific error
-      // Try signing them in instead — existing operator becoming a customer
-      if (error.message.toLowerCase().includes('already registered') ||
-          error.message.toLowerCase().includes('user already exists')) {
+      if (
+        error.message.toLowerCase().includes('already registered') ||
+        error.message.toLowerCase().includes('user already exists')
+      ) {
         return get().signIn(email, password)
       }
       return { error: error.message }
@@ -96,20 +168,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (!data.user) return { error: 'Signup failed. Please try again.' }
 
-    // Create the customer profile
-    const scancode = generateScancode()
-    const { error: profileError } = await supabase
-      .from('customers')
-      .insert({
-        auth_user_id: data.user.id,
-        first_name: firstName,
-        last_name: lastName,
-        email: email,
-        scancode,
-        balance: 0.00,
-      })
+    const { error: createError } = await createCustomerRecord({
+      authUserId: data.user.id,
+      firstName,
+      lastName,
+      email,
+    })
 
-    if (profileError) return { error: profileError.message }
+    if (createError) return { error: createError }
     return { error: null }
   },
 
@@ -125,36 +191,112 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         customerProfile: profile,
         needsProfileSetup: !profile,
       })
+      if (profile) {
+        get().fetchSavedLocations(profile.id)
+      }
     }
     return { error: null }
   },
 
   signOut: async () => {
     await supabase.auth.signOut()
-    set({ user: null, session: null, customerProfile: null, needsProfileSetup: false })
+    set({ user: null, session: null, customerProfile: null, savedLocations: [], needsProfileSetup: false })
   },
 
   completeProfileSetup: async (firstName, lastName) => {
     const { user } = get()
     if (!user) return { error: 'Not authenticated' }
 
-    const scancode = generateScancode()
-    const { data, error } = await supabase
-      .from('customers')
-      .insert({
-        auth_user_id: user.id,
-        first_name: firstName,
-        last_name: lastName,
-        email: user.email,
-        scancode,
-        balance: 0.00,
-      })
-      .select()
+    const { data, error } = await createCustomerRecord({
+      authUserId: user.id,
+      firstName,
+      lastName,
+      email: user.email ?? '',
+    })
+
+    if (error) return { error }
+    set({ customerProfile: data, needsProfileSetup: false })
+    return { error: null }
+  },
+
+  connectLocation: async (token: string) => {
+    const { customerProfile } = get()
+    if (!customerProfile) return { error: 'Not signed in' }
+
+    // Look up the location by signup_token
+    const { data: location, error: locationError } = await supabase
+      .from('locations')
+      .select('id, name, org_id, city, state')
+      .eq('signup_token', token.trim().toLowerCase())
+      .eq('is_active', true)
       .single()
+
+    if (locationError || !location) {
+      return { error: 'Location code not found. Please check and try again.' }
+    }
+
+    // Check if already saved
+    const already = get().savedLocations.find(sl => sl.location_id === location.id)
+    if (already) {
+      return { error: null, locationName: location.name }
+    }
+
+    const isFirst = get().savedLocations.length === 0
+
+    // Create customer_locations row
+    const { error: linkError } = await supabase
+      .from('customer_locations')
+      .insert({
+        customer_id: customerProfile.id,
+        location_id: location.id,
+        org_id: location.org_id,
+        is_home: isFirst, // first location auto-becomes home
+      })
+
+    if (linkError) return { error: linkError.message }
+
+    // If this is the first location, also set org_id on the customer row
+    if (isFirst) {
+      await supabase
+        .from('customers')
+        .update({ org_id: location.org_id, location_id: location.id })
+        .eq('id', customerProfile.id)
+
+      set(state => ({
+        customerProfile: state.customerProfile
+          ? { ...state.customerProfile, org_id: location.org_id, location_id: location.id }
+          : null
+      }))
+    }
+
+    // Refresh saved locations
+    await get().fetchSavedLocations(customerProfile.id)
+
+    return { error: null, locationName: location.name }
+  },
+
+  setHomeLocation: async (customerLocationId: string) => {
+    const { customerProfile, savedLocations } = get()
+    if (!customerProfile) return { error: 'Not signed in' }
+
+    // Remove home from current home
+    const currentHome = savedLocations.find(sl => sl.is_home)
+    if (currentHome) {
+      await supabase
+        .from('customer_locations')
+        .update({ is_home: false })
+        .eq('id', currentHome.id)
+    }
+
+    // Set new home
+    const { error } = await supabase
+      .from('customer_locations')
+      .update({ is_home: true })
+      .eq('id', customerLocationId)
 
     if (error) return { error: error.message }
 
-    set({ customerProfile: data as CustomerProfile, needsProfileSetup: false })
+    await get().fetchSavedLocations(customerProfile.id)
     return { error: null }
   },
 }))

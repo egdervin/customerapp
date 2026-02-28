@@ -1,61 +1,49 @@
 import { useState } from 'react'
 import { QRCodeSVG as QRCode } from 'qrcode.react'
+import toast from 'react-hot-toast'
 import { useAuthStore } from '../stores/authStore'
 import { Logo } from '../components/Logo'
+import { Button } from '../components/Button'
+import { Input } from '../components/Input'
 
-type Tab = 'wallet' | 'transactions' | 'menu' | 'order'
+type Tab = 'wallet' | 'locations' | 'transactions' | 'order'
 
-interface TabItem {
-  id: Tab
-  label: string
-  icon: string
-  comingSoon?: boolean
-}
-
-const TABS: TabItem[] = [
-  { id: 'wallet', label: 'Wallet', icon: '⬡' },
-  { id: 'transactions', label: 'History', icon: '↕' },
-  { id: 'menu', label: 'Menu', icon: '◈', comingSoon: true },
-  { id: 'order', label: 'Order', icon: '◎', comingSoon: true },
+const TABS: { id: Tab; label: string; comingSoon?: boolean }[] = [
+  { id: 'wallet',       label: 'Wallet' },
+  { id: 'locations',    label: 'Locations' },
+  { id: 'transactions', label: 'History' },
+  { id: 'order',        label: 'Order', comingSoon: true },
 ]
 
 export function HomePage() {
-  const { customerProfile, signOut } = useAuthStore()
+  const { customerProfile, savedLocations, signOut } = useAuthStore()
   const [activeTab, setActiveTab] = useState<Tab>('wallet')
 
   if (!customerProfile) return null
 
-  const displayName = `${customerProfile.first_name} ${customerProfile.last_name}`
-  const initials = `${customerProfile.first_name[0]}${customerProfile.last_name[0]}`.toUpperCase()
+  const displayName = `${customerProfile.first_name ?? ''} ${customerProfile.last_name ?? ''}`.trim()
+  const initials = `${(customerProfile.first_name?.[0] ?? '?').toUpperCase()}${(customerProfile.last_name?.[0] ?? '').toUpperCase()}`
+  const homeLocation = savedLocations.find(sl => sl.is_home)
 
   return (
     <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'var(--pd-off-white)',
-      maxWidth: 480,
-      margin: '0 auto',
+      minHeight: '100vh', display: 'flex', flexDirection: 'column',
+      background: 'var(--pd-off-white)', maxWidth: 480, margin: '0 auto',
     }}>
       {/* Header */}
       <header style={{
         background: 'var(--pd-green-dark)',
         padding: 'var(--space-lg) var(--space-xl)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <Logo size="sm" variant="light" />
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-sm)',
-          cursor: 'pointer',
-        }} onClick={() => signOut()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}
+          onClick={() => signOut()}>
           <div style={{
-            width: 36, height: 36,
-            background: 'var(--pd-yellow)',
-            borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 600, fontSize: '13px', color: 'var(--pd-text)',
+            width: 36, height: 36, background: 'var(--pd-yellow)',
+            borderRadius: '50%', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontWeight: 700, fontSize: '13px',
+            color: 'var(--pd-green-dark)',
           }}>
             {initials}
           </div>
@@ -63,79 +51,55 @@ export function HomePage() {
       </header>
 
       {/* Balance banner */}
-      <div style={{
-        background: 'var(--pd-green-dark)',
-        padding: '0 var(--space-xl) var(--space-xl)',
-      }}>
+      <div style={{ background: 'var(--pd-green-dark)', padding: '0 var(--space-xl) var(--space-xl)' }}>
         <div style={{
-          background: 'var(--pd-green-mid)',
-          borderRadius: 'var(--radius-lg)',
-          padding: 'var(--space-xl)',
-          border: '1px solid rgba(232,148,58,0.15)',
+          background: 'var(--pd-green-mid)', borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-xl)', border: '1px solid rgba(232,242,42,0.12)',
         }}>
           <p style={{
-            fontSize: '12px',
-            fontWeight: 500,
-            color: 'rgba(245,240,232,0.45)',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            marginBottom: 'var(--space-sm)',
+            fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.4)',
+            letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 'var(--space-sm)',
           }}>
             Account balance
           </p>
           <p style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: '48px',
-            color: 'var(--pd-white)',
-            lineHeight: 1,
-            marginBottom: 'var(--space-xs)',
+            fontFamily: 'var(--font-display)', fontSize: '48px',
+            color: '#fff', lineHeight: 1, marginBottom: 'var(--space-xs)',
           }}>
             ${customerProfile.balance.toFixed(2)}
           </p>
-          <p style={{ fontSize: '13px', color: 'rgba(245,240,232,0.4)' }}>
+          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
             {displayName}
+            {homeLocation && (
+              <span style={{ marginLeft: 8, color: 'var(--pd-yellow)', fontSize: '12px' }}>
+                · {homeLocation.location.name}
+              </span>
+            )}
           </p>
         </div>
       </div>
 
-      {/* Tab navigation */}
+      {/* Tabs */}
       <div style={{
-        display: 'flex',
-        background: 'var(--pd-white)',
-        borderBottom: '1px solid var(--pd-gray-light)',
-        padding: '0 var(--space-sm)',
+        display: 'flex', background: 'var(--pd-white)',
+        borderBottom: '1px solid var(--pd-gray-light)', padding: '0 var(--space-sm)',
       }}>
         {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              flex: 1,
-              padding: 'var(--space-md) var(--space-sm)',
-              background: 'none',
-              border: 'none',
-              borderBottom: activeTab === tab.id
-                ? '2px solid var(--pd-yellow)'
-                : '2px solid transparent',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontFamily: 'var(--font-body)',
-              fontWeight: 500,
-              color: activeTab === tab.id ? 'var(--pd-green)' : 'rgba(28,26,24,0.45)',
-              transition: 'all 0.15s ease',
-              letterSpacing: '0.03em',
-              position: 'relative',
-            }}
-          >
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+            flex: 1, padding: 'var(--space-md) var(--space-sm)',
+            background: 'none', border: 'none',
+            borderBottom: activeTab === tab.id ? '2px solid var(--pd-green)' : '2px solid transparent',
+            cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-body)',
+            fontWeight: 500,
+            color: activeTab === tab.id ? 'var(--pd-green)' : 'var(--pd-text-muted)',
+            transition: 'all 0.15s ease', letterSpacing: '0.03em', position: 'relative',
+          }}>
             {tab.label}
             {tab.comingSoon && (
               <span style={{
-                position: 'absolute',
-                top: 6, right: 4,
-                width: 6, height: 6,
-                background: 'var(--pd-yellow)',
+                position: 'absolute', top: 6, right: 4,
+                width: 5, height: 5, background: 'var(--pd-yellow)',
                 borderRadius: '50%',
-                opacity: 0.6,
               }} />
             )}
           </button>
@@ -144,68 +108,77 @@ export function HomePage() {
 
       {/* Tab content */}
       <div style={{ flex: 1, padding: 'var(--space-xl)', overflow: 'auto' }}>
-        {activeTab === 'wallet' && <WalletTab customerProfile={customerProfile} />}
+        {activeTab === 'wallet'       && <WalletTab customerProfile={customerProfile} />}
+        {activeTab === 'locations'    && <LocationsTab />}
         {activeTab === 'transactions' && <TransactionsTab />}
-        {(activeTab === 'menu' || activeTab === 'order') && <ComingSoonTab tab={activeTab} />}
+        {activeTab === 'order'        && <ComingSoonTab label="Order ahead" emoji="🛒" description="Place orders ahead and skip the line." />}
       </div>
     </div>
   )
 }
 
-function WalletTab({ customerProfile }: { customerProfile: { scancode: string; first_name: string } }) {
+// ─── Wallet Tab ───────────────────────────────────────────────────────────────
+
+function WalletTab({ customerProfile }: { customerProfile: { qr_token: string | null } }) {
+  const token = customerProfile.qr_token ?? ''
+  const { savedLocations } = useAuthStore()
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-xl)' }}>
+      {savedLocations.length === 0 && (
+        <div className="animate-fade-up" style={{
+          width: '100%', padding: 'var(--space-md)',
+          background: 'rgba(232,242,42,0.12)',
+          border: '1px solid rgba(20,90,16,0.15)',
+          borderRadius: 'var(--radius-md)', textAlign: 'center',
+        }}>
+          <p style={{ fontSize: '13px', color: 'var(--pd-green)', fontWeight: 500, marginBottom: 4 }}>
+            No location connected yet
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--pd-text-muted)' }}>
+            Go to the Locations tab to connect to a café.
+          </p>
+        </div>
+      )}
+
       <div className="animate-fade-up">
         <p style={{
-          textAlign: 'center',
-          fontSize: '14px',
-          color: 'rgba(28,26,24,0.5)',
-          marginBottom: 'var(--space-lg)',
+          textAlign: 'center', fontSize: '14px',
+          color: 'var(--pd-text-muted)', marginBottom: 'var(--space-lg)',
         }}>
           Show this code at the kiosk to pay
         </p>
-
-        {/* QR Code card */}
         <div style={{
-          background: 'var(--pd-white)',
-          borderRadius: 'var(--radius-xl)',
-          padding: 'var(--space-xl)',
-          boxShadow: 'var(--shadow-md)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 'var(--space-lg)',
-          border: '1px solid var(--pd-gray-light)',
+          background: 'var(--pd-white)', borderRadius: 'var(--radius-xl)',
+          padding: 'var(--space-xl)', boxShadow: 'var(--shadow-md)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          gap: 'var(--space-lg)', border: '1px solid var(--pd-gray-light)',
           animation: 'pulse-green 3s ease-in-out infinite',
         }}>
-          <QRCode
-            value={customerProfile.scancode}
-            size={200}
-            level="M"
-            includeMargin={false}
-          />
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: '13px', color: 'rgba(28,26,24,0.4)', marginBottom: 2 }}>
-              Member ID
-            </p>
-            <p style={{
-              fontFamily: 'monospace',
-              fontSize: '12px',
-              color: 'rgba(28,26,24,0.35)',
-              letterSpacing: '0.05em',
+          {token ? (
+            <QRCode value={token} size={200} level="M" includeMargin={false} />
+          ) : (
+            <div style={{
+              width: 200, height: 200, background: 'var(--pd-gray-light)',
+              borderRadius: 'var(--radius-md)', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              color: 'var(--pd-text-muted)', fontSize: '13px',
             }}>
-              {customerProfile.scancode.slice(0, 4)} {customerProfile.scancode.slice(4, 8)} {customerProfile.scancode.slice(8, 12)} {customerProfile.scancode.slice(12)}
+              Generating...
+            </div>
+          )}
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: '12px', color: 'var(--pd-text-muted)', marginBottom: 2 }}>Member ID</p>
+            <p style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--pd-gray)', letterSpacing: '0.06em' }}>
+              {token.slice(0,4)} {token.slice(4,8)} {token.slice(8,12)} {token.slice(12)}
             </p>
           </div>
         </div>
       </div>
 
       <div className="animate-fade-up animate-fade-up-delay-1" style={{
-        background: 'rgba(232,242,42,0.1)',
-        borderRadius: 'var(--radius-md)',
-        padding: 'var(--space-md)',
-        width: '100%',
-        textAlign: 'center',
+        background: 'rgba(20,90,16,0.06)', borderRadius: 'var(--radius-md)',
+        padding: 'var(--space-md)', width: '100%', textAlign: 'center',
       }}>
         <p style={{ fontSize: '13px', color: 'var(--pd-green)', fontWeight: 500 }}>
           💡 Keep your screen bright when scanning
@@ -215,41 +188,174 @@ function WalletTab({ customerProfile }: { customerProfile: { scancode: string; f
   )
 }
 
+// ─── Locations Tab ────────────────────────────────────────────────────────────
+
+function LocationsTab() {
+  const { savedLocations, connectLocation, setHomeLocation } = useAuthStore()
+  const [code, setCode] = useState('')
+  const [codeError, setCodeError] = useState<string | undefined>()
+  const [connecting, setConnecting] = useState(false)
+
+  const handleConnect = async () => {
+    if (!code.trim()) { setCodeError('Enter a location code'); return }
+    setConnecting(true)
+    setCodeError(undefined)
+    const { error, locationName } = await connectLocation(code)
+    setConnecting(false)
+    if (error) {
+      setCodeError(error)
+    } else {
+      setCode('')
+      toast.success(`Connected to ${locationName}!`)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
+
+      {/* Connect a new location */}
+      <div className="animate-fade-up">
+        <p style={{
+          fontSize: '13px', fontWeight: 600, color: 'var(--pd-text)',
+          letterSpacing: '0.05em', textTransform: 'uppercase',
+          marginBottom: 'var(--space-md)',
+        }}>
+          Connect a location
+        </p>
+        <div style={{
+          background: 'var(--pd-white)', borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-lg)', border: '1px solid var(--pd-gray-light)',
+          display: 'flex', flexDirection: 'column', gap: 'var(--space-md)',
+        }}>
+          <p style={{ fontSize: '14px', color: 'var(--pd-text-muted)', lineHeight: 1.6 }}>
+            Scan the QR code at your café, or enter the location code from the menu board or receipt.
+          </p>
+          <Input
+            label="Location code"
+            value={code}
+            onChange={e => { setCode(e.target.value); setCodeError(undefined) }}
+            error={codeError}
+            placeholder="e.g. a3f8c2"
+            autoCapitalize="none"
+            autoCorrect="off"
+          />
+          <Button
+            variant="primary"
+            loading={connecting}
+            onClick={handleConnect}
+          >
+            {connecting ? 'Connecting…' : 'Connect'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Saved locations list */}
+      {savedLocations.length > 0 && (
+        <div className="animate-fade-up animate-fade-up-delay-1">
+          <p style={{
+            fontSize: '13px', fontWeight: 600, color: 'var(--pd-text)',
+            letterSpacing: '0.05em', textTransform: 'uppercase',
+            marginBottom: 'var(--space-md)',
+          }}>
+            Your locations
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+            {savedLocations.map(sl => (
+              <div key={sl.id} style={{
+                background: 'var(--pd-white)', borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-md) var(--space-lg)',
+                border: `1.5px solid ${sl.is_home ? 'var(--pd-green)' : 'var(--pd-gray-light)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+                    <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pd-text)' }}>
+                      {sl.location.name}
+                    </p>
+                    {sl.is_home && (
+                      <span style={{
+                        fontSize: '10px', fontWeight: 600,
+                        background: 'var(--pd-yellow)', color: 'var(--pd-green-dark)',
+                        padding: '2px 7px', borderRadius: 'var(--radius-full)',
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
+                      }}>
+                        Home
+                      </span>
+                    )}
+                  </div>
+                  {(sl.location.city || sl.location.state) && (
+                    <p style={{ fontSize: '12px', color: 'var(--pd-text-muted)', marginTop: 2 }}>
+                      {[sl.location.city, sl.location.state].filter(Boolean).join(', ')}
+                    </p>
+                  )}
+                </div>
+                {!sl.is_home && (
+                  <button
+                    onClick={() => setHomeLocation(sl.id).then(({ error }) => {
+                      if (error) toast.error(error)
+                      else toast.success(`${sl.location.name} set as home`)
+                    })}
+                    style={{
+                      background: 'none', border: '1px solid var(--pd-gray-mid)',
+                      borderRadius: 'var(--radius-sm)', padding: '4px 10px',
+                      fontSize: '12px', color: 'var(--pd-text-muted)',
+                      cursor: 'pointer', fontFamily: 'var(--font-body)',
+                    }}
+                  >
+                    Set home
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {savedLocations.length === 0 && (
+        <div style={{ textAlign: 'center', paddingTop: 'var(--space-lg)' }}>
+          <div style={{ fontSize: '40px', marginBottom: 'var(--space-md)' }}>📍</div>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '20px', marginBottom: 'var(--space-sm)' }}>
+            No locations yet
+          </p>
+          <p style={{ fontSize: '14px', color: 'var(--pd-text-muted)' }}>
+            Connect to a café above to get started.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Transactions Tab ─────────────────────────────────────────────────────────
+
 function TransactionsTab() {
-  // TODO: fetch from Supabase
   return (
     <div style={{ textAlign: 'center', paddingTop: 'var(--space-2xl)' }}>
       <div style={{ fontSize: '40px', marginBottom: 'var(--space-md)' }}>📋</div>
       <p style={{ fontFamily: 'var(--font-display)', fontSize: '22px', marginBottom: 'var(--space-sm)' }}>
         No transactions yet
       </p>
-      <p style={{ fontSize: '14px', color: 'rgba(28,26,24,0.45)' }}>
-        Your purchase history will appear here
+      <p style={{ fontSize: '14px', color: 'var(--pd-text-muted)' }}>
+        Your purchase history will appear here.
       </p>
     </div>
   )
 }
 
-function ComingSoonTab({ tab }: { tab: string }) {
+function ComingSoonTab({ label, emoji, description }: { label: string; emoji: string; description: string }) {
   return (
     <div style={{ textAlign: 'center', paddingTop: 'var(--space-2xl)' }}>
       <div style={{
-        width: 64, height: 64,
-        background: 'var(--pd-yellow)',
-        borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '28px', margin: '0 auto var(--space-lg)',
+        width: 64, height: 64, background: 'var(--pd-yellow)',
+        borderRadius: '50%', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', fontSize: '28px', margin: '0 auto var(--space-lg)',
       }}>
-        {tab === 'menu' ? '🍽' : '🛒'}
+        {emoji}
       </div>
       <p style={{ fontFamily: 'var(--font-display)', fontSize: '24px', marginBottom: 'var(--space-sm)' }}>
-        Coming soon
+        {label}
       </p>
-      <p style={{ fontSize: '14px', color: 'rgba(28,26,24,0.45)', lineHeight: 1.6 }}>
-        {tab === 'menu'
-          ? 'Browse today\'s café menu right from your phone.'
-          : 'Place orders ahead and skip the line.'}
-      </p>
+      <p style={{ fontSize: '14px', color: 'var(--pd-text-muted)', lineHeight: 1.6 }}>{description}</p>
     </div>
   )
 }

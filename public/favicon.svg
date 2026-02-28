@@ -1,5 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
-  <rect width="40" height="40" rx="10" fill="#e8943a"/>
-  <rect x="17" y="8" width="6" height="24" rx="3" fill="#0f0e0d"/>
-  <rect x="8" y="17" width="24" height="6" rx="3" fill="#0f0e0d"/>
+<svg width="100" height="128" viewBox="0 0 100 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Yellow circle — top of P -->
+  <circle cx="22" cy="19" r="16" fill="#e8f22a"/>
+  
+  <!-- Green rounded square — body of P -->
+  <rect x="6" y="42" width="32" height="32" rx="6" fill="#145a10"/>
+  
+  <!-- Green quarter circle — base of P (original rotated 180° clockwise) -->
+  <path d="M38 112 L38 82 L6 82 Q6 112 38 112 Z" fill="#145a10"/>
+  
+  <!-- Navy D top piece — using P base quarter circle shape -->
+  <path d="M52 4 L52 36 L84 36 Q84 4 52 4 Z" fill="#145a10"/>
+  
+  <!-- Navy D body — alternative -->
+  <path d="M84 42 L52 42 L52 74 Q84 74 84 42 Z" fill="#145a10"/>
 </svg>
