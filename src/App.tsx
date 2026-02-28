@@ -7,6 +7,7 @@ import { SignupPage } from './pages/SignupPage'
 import { LoginPage } from './pages/LoginPage'
 import { ProfileSetupPage } from './pages/ProfileSetupPage'
 import { HomePage } from './pages/HomePage'
+import { InstallPrompt } from './components/InstallPrompt'
 import './index.css'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -68,6 +69,7 @@ export default function App() {
           },
         }}
       />
+      <InstallPrompt />
       <Routes>
         <Route path="/" element={<PublicGuard><LandingPage /></PublicGuard>} />
         <Route path="/signup" element={<PublicGuard><SignupPage /></PublicGuard>} />
