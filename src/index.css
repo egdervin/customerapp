@@ -8,21 +8,21 @@
 
 :root {
   /* Plusdine Brand Palette */
-  --pd-green:        #145a10;   /* primary brand green */
-  --pd-green-dark:   #0d3d09;   /* deeper green for backgrounds */
-  --pd-green-mid:    #1a7014;   /* sidebar / card variant */
-  --pd-green-light:  #e8f5e7;   /* light tint for backgrounds */
-  --pd-yellow:       #e8f22a;   /* brand accent yellow */
-  --pd-yellow-dim:   #c8d120;   /* darker yellow for text on white */
-  --pd-yellow-light: #f4f97a;   /* lighter yellow tint */
+  --pd-green:        #145a10;
+  --pd-green-dark:   #0d3d09;
+  --pd-green-mid:    #1a7014;
+  --pd-green-light:  #e8f5e7;
+  --pd-yellow:       #e8f22a;
+  --pd-yellow-dim:   #c8d120;
+  --pd-yellow-light: #f4f97a;
   --pd-white:        #ffffff;
-  --pd-off-white:    #f7f9f7;   /* background tint */
-  --pd-gray-light:   #f0f2f0;
-  --pd-gray-mid:     #dde3dd;
-  --pd-gray:         #8a9a8a;
+  --pd-off-white:    #f2f7f2;   /* slightly green-tinted, not stark white */
+  --pd-gray-light:   #e4ece4;   /* green-tinted dividers */
+  --pd-gray-mid:     #c8d8c8;
+  --pd-gray:         #7a907a;
   --pd-black:        #0f140f;
   --pd-text:         #1a261a;
-  --pd-text-muted:   #5a705a;
+  --pd-text-muted:   #527052;
   --pd-red:          #c0392b;
   --pd-success:      #145a10;
 
@@ -30,26 +30,43 @@
   --font-display: 'DM Serif Display', Georgia, serif;
   --font-body:    'DM Sans', system-ui, sans-serif;
 
+  /* Base font size — larger for mobile readability */
+  --text-xs:   13px;
+  --text-sm:   15px;
+  --text-base: 17px;
+  --text-lg:   19px;
+  --text-xl:   22px;
+  --text-2xl:  28px;
+  --text-3xl:  36px;
+
   /* Spacing */
   --space-xs:  4px;
-  --space-sm:  8px;
-  --space-md:  16px;
-  --space-lg:  24px;
-  --space-xl:  40px;
-  --space-2xl: 64px;
+  --space-sm:  10px;
+  --space-md:  18px;
+  --space-lg:  26px;
+  --space-xl:  36px;
+  --space-2xl: 60px;
+
+  /* Safe area insets for iPhone notch/Dynamic Island */
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 16px);
+  --safe-right:  env(safe-area-inset-right, 16px);
+
+  /* Horizontal page padding — never flush to the edge */
+  --page-px: max(20px, var(--safe-left));
 
   /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
-  --radius-xl: 32px;
+  --radius-sm:   8px;
+  --radius-md:   14px;
+  --radius-lg:   22px;
+  --radius-xl:   32px;
   --radius-full: 9999px;
 
   /* Shadows */
-  --shadow-sm:  0 2px 8px rgba(15,14,13,0.12);
-  --shadow-md:  0 4px 20px rgba(15,14,13,0.18);
-  --shadow-lg:  0 8px 40px rgba(15,14,13,0.28);
-  --shadow-amber: 0 4px 24px rgba(232,148,58,0.35);
+  --shadow-sm:  0 2px 8px rgba(15,20,15,0.10);
+  --shadow-md:  0 4px 20px rgba(15,20,15,0.14);
+  --shadow-lg:  0 8px 40px rgba(15,20,15,0.22);
 
   /* Transitions */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -63,9 +80,10 @@ html {
 body {
   height: 100%;
   font-family: var(--font-body);
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: var(--text-base);
+  line-height: 1.55;
   color: var(--pd-text);
+  /* Subtle green-tinted background — not white, not gray */
   background: var(--pd-off-white);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -78,7 +96,7 @@ body {
   flex-direction: column;
 }
 
-/* ─── Utility classes ───────────────────────────────── */
+/* ─── Utility ──────────────────────────────────────── */
 
 .sr-only {
   position: absolute;
@@ -89,10 +107,10 @@ body {
   white-space: nowrap;
 }
 
-/* ─── Animations ─────────────────────────────────────── */
+/* ─── Animations ───────────────────────────────────── */
 
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
+  from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -101,21 +119,16 @@ body {
   to   { opacity: 1; }
 }
 
-@keyframes shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position: 200% center; }
-}
-
 @keyframes pulse-green {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(20, 90, 16, 0.3); }
-  50%       { box-shadow: 0 0 0 12px rgba(20, 90, 16, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(20, 90, 16, 0.25); }
+  50%       { box-shadow: 0 0 0 14px rgba(20, 90, 16, 0); }
 }
 
 .animate-fade-up {
-  animation: fadeUp 0.5s var(--ease-out) both;
+  animation: fadeUp 0.45s var(--ease-out) both;
 }
 
-.animate-fade-up-delay-1 { animation-delay: 0.1s; }
-.animate-fade-up-delay-2 { animation-delay: 0.2s; }
-.animate-fade-up-delay-3 { animation-delay: 0.3s; }
-.animate-fade-up-delay-4 { animation-delay: 0.4s; }
+.animate-fade-up-delay-1 { animation-delay: 0.08s; }
+.animate-fade-up-delay-2 { animation-delay: 0.16s; }
+.animate-fade-up-delay-3 { animation-delay: 0.24s; }
+.animate-fade-up-delay-4 { animation-delay: 0.32s; }

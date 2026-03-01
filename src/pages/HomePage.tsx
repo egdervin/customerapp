@@ -27,51 +27,82 @@ export function HomePage() {
 
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      background: 'var(--pd-off-white)', maxWidth: 480, margin: '0 auto',
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'var(--pd-off-white)',
+      maxWidth: 480,
+      margin: '0 auto',
     }}>
-      {/* Header */}
+      {/* Header — respects safe area top (notch/Dynamic Island) */}
       <header style={{
         background: 'var(--pd-green-dark)',
-        padding: 'var(--space-lg) var(--space-xl)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        paddingTop: 'calc(var(--safe-top) + 14px)',
+        paddingBottom: '14px',
+        paddingLeft: 'var(--page-px)',
+        paddingRight: 'var(--page-px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
       }}>
         <Logo size="sm" variant="light" />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}
-          onClick={() => signOut()}>
+        <button
+          onClick={() => signOut()}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 8, padding: 4,
+          }}
+          aria-label="Sign out"
+        >
           <div style={{
-            width: 36, height: 36, background: 'var(--pd-yellow)',
-            borderRadius: '50%', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontWeight: 700, fontSize: '13px',
+            width: 40, height: 40,
+            background: 'var(--pd-yellow)',
+            borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 700, fontSize: 'var(--text-sm)',
             color: 'var(--pd-green-dark)',
           }}>
             {initials}
           </div>
-        </div>
+        </button>
       </header>
 
       {/* Balance banner */}
-      <div style={{ background: 'var(--pd-green-dark)', padding: '0 var(--space-xl) var(--space-xl)' }}>
+      <div style={{
+        background: 'var(--pd-green-dark)',
+        paddingLeft: 'var(--page-px)',
+        paddingRight: 'var(--page-px)',
+        paddingBottom: 'var(--space-lg)',
+      }}>
         <div style={{
-          background: 'var(--pd-green-mid)', borderRadius: 'var(--radius-lg)',
-          padding: 'var(--space-xl)', border: '1px solid rgba(232,242,42,0.12)',
+          background: 'var(--pd-green-mid)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-lg)',
+          border: '1px solid rgba(232,242,42,0.12)',
         }}>
           <p style={{
-            fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.4)',
-            letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 'var(--space-sm)',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            color: 'rgba(255,255,255,0.45)',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            marginBottom: 6,
           }}>
             Account balance
           </p>
           <p style={{
-            fontFamily: 'var(--font-display)', fontSize: '48px',
-            color: '#fff', lineHeight: 1, marginBottom: 'var(--space-xs)',
+            fontFamily: 'var(--font-display)',
+            fontSize: '52px',
+            color: '#fff',
+            lineHeight: 1,
+            marginBottom: 8,
           }}>
             ${customerProfile.balance.toFixed(2)}
           </p>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.45)' }}>
             {displayName}
             {homeLocation && (
-              <span style={{ marginLeft: 8, color: 'var(--pd-yellow)', fontSize: '12px' }}>
+              <span style={{ marginLeft: 8, color: 'var(--pd-yellow)' }}>
                 · {homeLocation.location.name}
               </span>
             )}
@@ -81,24 +112,40 @@ export function HomePage() {
 
       {/* Tabs */}
       <div style={{
-        display: 'flex', background: 'var(--pd-white)',
-        borderBottom: '1px solid var(--pd-gray-light)', padding: '0 var(--space-sm)',
+        display: 'flex',
+        background: 'var(--pd-white)',
+        borderBottom: '1px solid var(--pd-gray-light)',
+        paddingLeft: 'var(--space-sm)',
+        paddingRight: 'var(--space-sm)',
       }}>
         {TABS.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-            flex: 1, padding: 'var(--space-md) var(--space-sm)',
-            background: 'none', border: 'none',
-            borderBottom: activeTab === tab.id ? '2px solid var(--pd-green)' : '2px solid transparent',
-            cursor: 'pointer', fontSize: '12px', fontFamily: 'var(--font-body)',
-            fontWeight: 500,
-            color: activeTab === tab.id ? 'var(--pd-green)' : 'var(--pd-text-muted)',
-            transition: 'all 0.15s ease', letterSpacing: '0.03em', position: 'relative',
-          }}>
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              flex: 1,
+              paddingTop: 14,
+              paddingBottom: 14,
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === tab.id
+                ? '2.5px solid var(--pd-green)'
+                : '2.5px solid transparent',
+              cursor: 'pointer',
+              fontSize: 'var(--text-sm)',
+              fontFamily: 'var(--font-body)',
+              fontWeight: 500,
+              color: activeTab === tab.id ? 'var(--pd-green)' : 'var(--pd-text-muted)',
+              transition: 'all 0.15s ease',
+              position: 'relative',
+            }}
+          >
             {tab.label}
             {tab.comingSoon && (
               <span style={{
-                position: 'absolute', top: 6, right: 4,
-                width: 5, height: 5, background: 'var(--pd-yellow)',
+                position: 'absolute', top: 8, right: 6,
+                width: 6, height: 6,
+                background: 'var(--pd-yellow)',
                 borderRadius: '50%',
               }} />
             )}
@@ -106,12 +153,17 @@ export function HomePage() {
         ))}
       </div>
 
-      {/* Tab content */}
-      <div style={{ flex: 1, padding: 'var(--space-xl)', overflow: 'auto' }}>
+      {/* Tab content — safe area bottom padding */}
+      <div style={{
+        flex: 1,
+        padding: 'var(--space-lg) var(--page-px)',
+        paddingBottom: 'calc(var(--safe-bottom) + var(--space-lg))',
+        overflow: 'auto',
+      }}>
         {activeTab === 'wallet'       && <WalletTab customerProfile={customerProfile} />}
         {activeTab === 'locations'    && <LocationsTab />}
         {activeTab === 'transactions' && <TransactionsTab />}
-        {activeTab === 'order'        && <ComingSoonTab label="Order ahead" emoji="🛒" description="Place orders ahead and skip the line." />}
+        {activeTab === 'order'        && <ComingSoonTab label="Order ahead" emoji="🛒" description="Place orders and skip the line." />}
       </div>
     </div>
   )
@@ -124,52 +176,69 @@ function WalletTab({ customerProfile }: { customerProfile: { qr_token: string | 
   const { savedLocations } = useAuthStore()
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-xl)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-lg)' }}>
       {savedLocations.length === 0 && (
         <div className="animate-fade-up" style={{
-          width: '100%', padding: 'var(--space-md)',
-          background: 'rgba(232,242,42,0.12)',
+          width: '100%',
+          padding: 'var(--space-md)',
+          background: 'rgba(20,90,16,0.07)',
           border: '1px solid rgba(20,90,16,0.15)',
-          borderRadius: 'var(--radius-md)', textAlign: 'center',
+          borderRadius: 'var(--radius-md)',
+          textAlign: 'center',
         }}>
-          <p style={{ fontSize: '13px', color: 'var(--pd-green)', fontWeight: 500, marginBottom: 4 }}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-green)', fontWeight: 600, marginBottom: 4 }}>
             No location connected yet
           </p>
-          <p style={{ fontSize: '12px', color: 'var(--pd-text-muted)' }}>
-            Go to the Locations tab to connect to a café.
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-text-muted)' }}>
+            Go to Locations to connect to a café.
           </p>
         </div>
       )}
 
-      <div className="animate-fade-up">
+      <div className="animate-fade-up" style={{ width: '100%' }}>
         <p style={{
-          textAlign: 'center', fontSize: '14px',
-          color: 'var(--pd-text-muted)', marginBottom: 'var(--space-lg)',
+          textAlign: 'center',
+          fontSize: 'var(--text-sm)',
+          color: 'var(--pd-text-muted)',
+          marginBottom: 'var(--space-md)',
         }}>
           Show this code at the kiosk to pay
         </p>
         <div style={{
-          background: 'var(--pd-white)', borderRadius: 'var(--radius-xl)',
-          padding: 'var(--space-xl)', boxShadow: 'var(--shadow-md)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: 'var(--space-lg)', border: '1px solid var(--pd-gray-light)',
+          background: 'var(--pd-white)',
+          borderRadius: 'var(--radius-xl)',
+          padding: 'var(--space-lg)',
+          boxShadow: 'var(--shadow-md)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 'var(--space-md)',
+          border: '1px solid var(--pd-gray-light)',
           animation: 'pulse-green 3s ease-in-out infinite',
         }}>
           {token ? (
-            <QRCode value={token} size={200} level="M" includeMargin={false} />
+            <QRCode value={token} size={220} level="M" includeMargin={false} />
           ) : (
             <div style={{
-              width: 200, height: 200, background: 'var(--pd-gray-light)',
-              borderRadius: 'var(--radius-md)', display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-              color: 'var(--pd-text-muted)', fontSize: '13px',
+              width: 220, height: 220,
+              background: 'var(--pd-gray-light)',
+              borderRadius: 'var(--radius-md)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--pd-text-muted)', fontSize: 'var(--text-sm)',
             }}>
-              Generating...
+              Generating…
             </div>
           )}
           <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: '12px', color: 'var(--pd-text-muted)', marginBottom: 2 }}>Member ID</p>
-            <p style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--pd-gray)', letterSpacing: '0.06em' }}>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', marginBottom: 4 }}>
+              Member ID
+            </p>
+            <p style={{
+              fontFamily: 'monospace',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--pd-gray)',
+              letterSpacing: '0.1em',
+            }}>
               {token.slice(0,4)} {token.slice(4,8)} {token.slice(8,12)} {token.slice(12)}
             </p>
           </div>
@@ -177,10 +246,13 @@ function WalletTab({ customerProfile }: { customerProfile: { qr_token: string | 
       </div>
 
       <div className="animate-fade-up animate-fade-up-delay-1" style={{
-        background: 'rgba(20,90,16,0.06)', borderRadius: 'var(--radius-md)',
-        padding: 'var(--space-md)', width: '100%', textAlign: 'center',
+        background: 'rgba(20,90,16,0.06)',
+        borderRadius: 'var(--radius-md)',
+        padding: 'var(--space-md)',
+        width: '100%',
+        textAlign: 'center',
       }}>
-        <p style={{ fontSize: '13px', color: 'var(--pd-green)', fontWeight: 500 }}>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-green)', fontWeight: 500 }}>
           💡 Keep your screen bright when scanning
         </p>
       </div>
@@ -216,45 +288,51 @@ function LocationsTab() {
       {/* Connect a new location */}
       <div className="animate-fade-up">
         <p style={{
-          fontSize: '13px', fontWeight: 600, color: 'var(--pd-text)',
-          letterSpacing: '0.05em', textTransform: 'uppercase',
+          fontSize: 'var(--text-xs)',
+          fontWeight: 600,
+          color: 'var(--pd-text-muted)',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
           marginBottom: 'var(--space-md)',
         }}>
           Connect a location
         </p>
         <div style={{
-          background: 'var(--pd-white)', borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-lg)', border: '1px solid var(--pd-gray-light)',
-          display: 'flex', flexDirection: 'column', gap: 'var(--space-md)',
+          background: 'var(--pd-white)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-lg)',
+          border: '1px solid var(--pd-gray-light)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--space-md)',
         }}>
-          <p style={{ fontSize: '14px', color: 'var(--pd-text-muted)', lineHeight: 1.6 }}>
+          <p style={{ fontSize: 'var(--text-base)', color: 'var(--pd-text-muted)', lineHeight: 1.55 }}>
             Scan the QR code at your café, or enter the location code from the menu board or receipt.
           </p>
           <Input
             label="Location code"
             value={code}
-            onChange={e => { setCode(e.target.value); setCodeError(undefined) }}
+            onChange={e => { setCode(e.target.value.toUpperCase()); setCodeError(undefined) }}
             error={codeError}
-            placeholder="e.g. a3f8c2"
-            autoCapitalize="none"
+            placeholder="e.g. A3F8C2"
+            autoCapitalize="characters"
             autoCorrect="off"
           />
-          <Button
-            variant="primary"
-            loading={connecting}
-            onClick={handleConnect}
-          >
+          <Button variant="primary" loading={connecting} onClick={handleConnect}>
             {connecting ? 'Connecting…' : 'Connect'}
           </Button>
         </div>
       </div>
 
-      {/* Saved locations list */}
+      {/* Saved locations */}
       {savedLocations.length > 0 && (
         <div className="animate-fade-up animate-fade-up-delay-1">
           <p style={{
-            fontSize: '13px', fontWeight: 600, color: 'var(--pd-text)',
-            letterSpacing: '0.05em', textTransform: 'uppercase',
+            fontSize: 'var(--text-xs)',
+            fontWeight: 600,
+            color: 'var(--pd-text-muted)',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
             marginBottom: 'var(--space-md)',
           }}>
             Your locations
@@ -262,29 +340,36 @@ function LocationsTab() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
             {savedLocations.map(sl => (
               <div key={sl.id} style={{
-                background: 'var(--pd-white)', borderRadius: 'var(--radius-md)',
+                background: 'var(--pd-white)',
+                borderRadius: 'var(--radius-md)',
                 padding: 'var(--space-md) var(--space-lg)',
                 border: `1.5px solid ${sl.is_home ? 'var(--pd-green)' : 'var(--pd-gray-light)'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
               }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-                    <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pd-text)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--pd-text)' }}>
                       {sl.location.name}
                     </p>
                     {sl.is_home && (
                       <span style={{
-                        fontSize: '10px', fontWeight: 600,
-                        background: 'var(--pd-yellow)', color: 'var(--pd-green-dark)',
-                        padding: '2px 7px', borderRadius: 'var(--radius-full)',
-                        letterSpacing: '0.06em', textTransform: 'uppercase',
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 700,
+                        background: 'var(--pd-yellow)',
+                        color: 'var(--pd-green-dark)',
+                        padding: '2px 8px',
+                        borderRadius: 'var(--radius-full)',
+                        letterSpacing: '0.05em',
+                        textTransform: 'uppercase',
                       }}>
                         Home
                       </span>
                     )}
                   </div>
                   {(sl.location.city || sl.location.state) && (
-                    <p style={{ fontSize: '12px', color: 'var(--pd-text-muted)', marginTop: 2 }}>
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-text-muted)' }}>
                       {[sl.location.city, sl.location.state].filter(Boolean).join(', ')}
                     </p>
                   )}
@@ -296,10 +381,14 @@ function LocationsTab() {
                       else toast.success(`${sl.location.name} set as home`)
                     })}
                     style={{
-                      background: 'none', border: '1px solid var(--pd-gray-mid)',
-                      borderRadius: 'var(--radius-sm)', padding: '4px 10px',
-                      fontSize: '12px', color: 'var(--pd-text-muted)',
-                      cursor: 'pointer', fontFamily: 'var(--font-body)',
+                      background: 'none',
+                      border: '1px solid var(--pd-gray-mid)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '6px 12px',
+                      fontSize: 'var(--text-sm)',
+                      color: 'var(--pd-text-muted)',
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-body)',
                     }}
                   >
                     Set home
@@ -313,11 +402,15 @@ function LocationsTab() {
 
       {savedLocations.length === 0 && (
         <div style={{ textAlign: 'center', paddingTop: 'var(--space-lg)' }}>
-          <div style={{ fontSize: '40px', marginBottom: 'var(--space-md)' }}>📍</div>
-          <p style={{ fontFamily: 'var(--font-display)', fontSize: '20px', marginBottom: 'var(--space-sm)' }}>
+          <div style={{ fontSize: '44px', marginBottom: 'var(--space-md)' }}>📍</div>
+          <p style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'var(--text-2xl)',
+            marginBottom: 'var(--space-sm)',
+          }}>
             No locations yet
           </p>
-          <p style={{ fontSize: '14px', color: 'var(--pd-text-muted)' }}>
+          <p style={{ fontSize: 'var(--text-base)', color: 'var(--pd-text-muted)' }}>
             Connect to a café above to get started.
           </p>
         </div>
@@ -331,11 +424,15 @@ function LocationsTab() {
 function TransactionsTab() {
   return (
     <div style={{ textAlign: 'center', paddingTop: 'var(--space-2xl)' }}>
-      <div style={{ fontSize: '40px', marginBottom: 'var(--space-md)' }}>📋</div>
-      <p style={{ fontFamily: 'var(--font-display)', fontSize: '22px', marginBottom: 'var(--space-sm)' }}>
+      <div style={{ fontSize: '44px', marginBottom: 'var(--space-md)' }}>📋</div>
+      <p style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 'var(--text-2xl)',
+        marginBottom: 'var(--space-sm)',
+      }}>
         No transactions yet
       </p>
-      <p style={{ fontSize: '14px', color: 'var(--pd-text-muted)' }}>
+      <p style={{ fontSize: 'var(--text-base)', color: 'var(--pd-text-muted)' }}>
         Your purchase history will appear here.
       </p>
     </div>
@@ -346,16 +443,25 @@ function ComingSoonTab({ label, emoji, description }: { label: string; emoji: st
   return (
     <div style={{ textAlign: 'center', paddingTop: 'var(--space-2xl)' }}>
       <div style={{
-        width: 64, height: 64, background: 'var(--pd-yellow)',
-        borderRadius: '50%', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', fontSize: '28px', margin: '0 auto var(--space-lg)',
+        width: 72, height: 72,
+        background: 'var(--pd-yellow)',
+        borderRadius: '50%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '32px',
+        margin: '0 auto var(--space-lg)',
       }}>
         {emoji}
       </div>
-      <p style={{ fontFamily: 'var(--font-display)', fontSize: '24px', marginBottom: 'var(--space-sm)' }}>
+      <p style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 'var(--text-2xl)',
+        marginBottom: 'var(--space-sm)',
+      }}>
         {label}
       </p>
-      <p style={{ fontSize: '14px', color: 'var(--pd-text-muted)', lineHeight: 1.6 }}>{description}</p>
+      <p style={{ fontSize: 'var(--text-base)', color: 'var(--pd-text-muted)', lineHeight: 1.55 }}>
+        {description}
+      </p>
     </div>
   )
 }

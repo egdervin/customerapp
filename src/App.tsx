@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './stores/authStore'
 import { LandingPage } from './pages/LandingPage'
@@ -7,11 +7,13 @@ import { SignupPage } from './pages/SignupPage'
 import { LoginPage } from './pages/LoginPage'
 import { ProfileSetupPage } from './pages/ProfileSetupPage'
 import { HomePage } from './pages/HomePage'
+import { JoinPage } from './pages/JoinPage'
 import { InstallPrompt } from './components/InstallPrompt'
 import './index.css'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, customerProfile, needsProfileSetup, loading } = useAuthStore()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -31,7 +33,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (!user) return <Navigate to="/" replace />
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
   if (needsProfileSetup) return <Navigate to="/setup" replace />
   if (!customerProfile) return <Navigate to="/setup" replace />
 
@@ -40,8 +42,13 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 function PublicGuard({ children }: { children: React.ReactNode }) {
   const { user, customerProfile, needsProfileSetup, loading } = useAuthStore()
+  const location = useLocation()
+  const next = new URLSearchParams(location.search).get('next')
+
   if (loading) return null
-  if (user && !needsProfileSetup && customerProfile) return <Navigate to="/home" replace />
+  if (user && !needsProfileSetup && customerProfile) {
+    return <Navigate to={next || '/home'} replace />
+  }
   if (user && needsProfileSetup) return <Navigate to="/setup" replace />
   return <>{children}</>
 }
@@ -63,6 +70,7 @@ export default function App() {
             background: 'var(--pd-green-dark)',
             color: 'var(--pd-white)',
             borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--text-base)',
           },
           success: {
             iconTheme: { primary: 'var(--pd-yellow)', secondary: 'var(--pd-green-dark)' },
@@ -71,12 +79,13 @@ export default function App() {
       />
       <InstallPrompt />
       <Routes>
-        <Route path="/" element={<PublicGuard><LandingPage /></PublicGuard>} />
-        <Route path="/signup" element={<PublicGuard><SignupPage /></PublicGuard>} />
-        <Route path="/login" element={<PublicGuard><LoginPage /></PublicGuard>} />
-        <Route path="/setup" element={<ProfileSetupPage />} />
-        <Route path="/home" element={<AuthGuard><HomePage /></AuthGuard>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/"        element={<PublicGuard><LandingPage /></PublicGuard>} />
+        <Route path="/signup"  element={<PublicGuard><SignupPage /></PublicGuard>} />
+        <Route path="/login"   element={<PublicGuard><LoginPage /></PublicGuard>} />
+        <Route path="/setup"   element={<ProfileSetupPage />} />
+        <Route path="/home"    element={<AuthGuard><HomePage /></AuthGuard>} />
+        <Route path="/join/:token" element={<JoinPage />} />
+        <Route path="*"        element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
