@@ -1,13 +1,18 @@
-const CACHE = 'plusdine-v1'
-const PRECACHE = ['/', '/index.html']
+const CACHE = 'plusdine-v2'
+const APP_SHELL = [
+  '/',
+  '/index.html',
+]
 
+// Install — cache only the app shell
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(PRECACHE))
+    caches.open(CACHE).then(c => c.addAll(APP_SHELL))
   )
   self.skipWaiting()
 })
 
+// Activate — clear old caches
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -17,22 +22,28 @@ self.addEventListener('activate', e => {
   self.clients.claim()
 })
 
+// Fetch — only intercept navigation requests for the app shell
+// Let ALL other requests (Supabase, fonts, assets) pass through untouched
 self.addEventListener('fetch', e => {
-  // Only cache GET requests to same origin
-  if (e.request.method !== 'GET' || !e.request.url.startsWith(self.location.origin)) return
+  const url = new URL(e.request.url)
 
-  // Network first for API calls, cache first for assets
-  if (e.request.url.includes('supabase.co')) return
+  // Never touch API calls — let them go directly to the network
+  if (
+    url.hostname.includes('supabase.co') ||
+    url.protocol === 'chrome-extension:' ||
+    e.request.method !== 'GET'
+  ) {
+    return
+  }
 
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      const network = fetch(e.request).then(res => {
-        if (res.ok) {
-          caches.open(CACHE).then(c => c.put(e.request, res.clone()))
-        }
-        return res
-      })
-      return cached || network
-    })
-  )
+  // For navigation requests, serve index.html from cache (SPA routing)
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      caches.match('/index.html').then(cached => cached || fetch(e.request))
+    )
+    return
+  }
+
+  // For everything else (JS/CSS assets), network first, no caching
+  // This prevents the clone() error entirely
 })

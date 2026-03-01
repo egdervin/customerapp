@@ -226,64 +226,76 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const cleanToken = token.trim().toUpperCase()
     if (!cleanToken) return { error: 'Please enter a location code' }
 
-    // Look up the location by signup_token
-    const { data: location, error: locationError } = await supabase
-      .from('locations')
-      .select('id, name, org_id, city, state')
-      .ilike('signup_token', cleanToken)
-      .eq('is_active', true)
-      .maybeSingle()  // maybeSingle returns null instead of error when no rows found
+    console.log('connectLocation: looking up token', cleanToken)
 
-    if (locationError) {
-      console.error('Location lookup error:', locationError)
-      return { error: `Lookup failed: ${locationError.message}` }
-    }
+    // Wrap in a timeout so it never spins forever
+    const timeoutPromise = new Promise<{ error: string }>(resolve =>
+      setTimeout(() => resolve({ error: 'Request timed out. Check your connection and try again.' }), 10000)
+    )
 
-    if (!location) {
-      return { error: 'Location code not found. Please check and try again.' }
-    }
+    const lookupPromise = (async () => {
+      // Look up the location by signup_token
+      console.log('connectLocation: querying locations table...')
+      const { data: location, error: locationError } = await supabase
+        .from('locations')
+        .select('id, name, org_id, city, state')
+        .ilike('signup_token', cleanToken)
+        .eq('is_active', true)
+        .maybeSingle()
 
-    // Check if already saved
-    const already = get().savedLocations.find(sl => sl.location_id === location.id)
-    if (already) {
+      console.log('connectLocation: location result', { location, locationError })
+
+      if (locationError) {
+        return { error: `Lookup failed: ${locationError.message}` }
+      }
+
+      if (!location) {
+        return { error: 'Location code not found. Please check and try again.' }
+      }
+
+      // Check if already saved
+      const already = get().savedLocations.find(sl => sl.location_id === location.id)
+      if (already) {
+        return { error: null, locationName: location.name }
+      }
+
+      const isFirst = get().savedLocations.length === 0
+
+      console.log('connectLocation: inserting customer_locations...')
+      const { error: linkError } = await supabase
+        .from('customer_locations')
+        .insert({
+          customer_id: customerProfile.id,
+          location_id: location.id,
+          org_id: location.org_id,
+          is_home: isFirst,
+        })
+
+      console.log('connectLocation: insert result', { linkError })
+
+      if (linkError) {
+        return { error: linkError.message }
+      }
+
+      // If this is the first location, also set org_id on the customer row
+      if (isFirst) {
+        await supabase
+          .from('customers')
+          .update({ org_id: location.org_id, location_id: location.id })
+          .eq('id', customerProfile.id)
+
+        set(state => ({
+          customerProfile: state.customerProfile
+            ? { ...state.customerProfile, org_id: location.org_id, location_id: location.id }
+            : null
+        }))
+      }
+
+      await get().fetchSavedLocations(customerProfile.id)
       return { error: null, locationName: location.name }
-    }
+    })()
 
-    const isFirst = get().savedLocations.length === 0
-
-    // Create customer_locations row
-    const { error: linkError } = await supabase
-      .from('customer_locations')
-      .insert({
-        customer_id: customerProfile.id,
-        location_id: location.id,
-        org_id: location.org_id,
-        is_home: isFirst,
-      })
-
-    if (linkError) {
-      console.error('customer_locations insert error:', linkError)
-      return { error: linkError.message }
-    }
-
-    // If this is the first location, also set org_id on the customer row
-    if (isFirst) {
-      await supabase
-        .from('customers')
-        .update({ org_id: location.org_id, location_id: location.id })
-        .eq('id', customerProfile.id)
-
-      set(state => ({
-        customerProfile: state.customerProfile
-          ? { ...state.customerProfile, org_id: location.org_id, location_id: location.id }
-          : null
-      }))
-    }
-
-    // Refresh saved locations
-    await get().fetchSavedLocations(customerProfile.id)
-
-    return { error: null, locationName: location.name }
+    return Promise.race([lookupPromise, timeoutPromise])
   },
 
   setHomeLocation: async (customerLocationId: string) => {
