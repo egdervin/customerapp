@@ -227,7 +227,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { data: location, error: locationError } = await supabase
       .from('locations')
       .select('id, name, org_id, city, state')
-      .eq('signup_token', token.trim().toLowerCase())
+      .ilike('signup_token', token.trim())
       .eq('is_active', true)
       .single()
 
