@@ -223,15 +223,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { customerProfile } = get()
     if (!customerProfile) return { error: 'Not signed in' }
 
+    const cleanToken = token.trim().toUpperCase()
+    if (!cleanToken) return { error: 'Please enter a location code' }
+
     // Look up the location by signup_token
     const { data: location, error: locationError } = await supabase
       .from('locations')
       .select('id, name, org_id, city, state')
-      .ilike('signup_token', token.trim())
+      .ilike('signup_token', cleanToken)
       .eq('is_active', true)
-      .single()
+      .maybeSingle()  // maybeSingle returns null instead of error when no rows found
 
-    if (locationError || !location) {
+    if (locationError) {
+      console.error('Location lookup error:', locationError)
+      return { error: `Lookup failed: ${locationError.message}` }
+    }
+
+    if (!location) {
       return { error: 'Location code not found. Please check and try again.' }
     }
 
@@ -250,10 +258,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         customer_id: customerProfile.id,
         location_id: location.id,
         org_id: location.org_id,
-        is_home: isFirst, // first location auto-becomes home
+        is_home: isFirst,
       })
 
-    if (linkError) return { error: linkError.message }
+    if (linkError) {
+      console.error('customer_locations insert error:', linkError)
+      return { error: linkError.message }
+    }
 
     // If this is the first location, also set org_id on the customer row
     if (isFirst) {
