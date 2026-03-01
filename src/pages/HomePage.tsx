@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { QRCodeSVG as QRCode } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../stores/authStore'
 import { Logo } from '../components/Logo'
 import { Button } from '../components/Button'
 import { Input } from '../components/Input'
+import { QrScanner } from '../components/QrScanner'
 
 type Tab = 'wallet' | 'locations' | 'transactions' | 'order'
 
@@ -16,8 +17,20 @@ const TABS: { id: Tab; label: string; comingSoon?: boolean }[] = [
 ]
 
 export function HomePage() {
-  const { customerProfile, savedLocations, signOut } = useAuthStore()
+  const { customerProfile, savedLocations, signOut, fetchSavedLocations } = useAuthStore()
   const [activeTab, setActiveTab] = useState<Tab>('wallet')
+
+  // When PWA comes back into focus (e.g. after browser-based join flow),
+  // refresh saved locations so new connections show up immediately
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && customerProfile) {
+        fetchSavedLocations(customerProfile.id)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [customerProfile])
 
   if (!customerProfile) return null
 
@@ -267,12 +280,14 @@ function LocationsTab() {
   const [code, setCode] = useState('')
   const [codeError, setCodeError] = useState<string | undefined>()
   const [connecting, setConnecting] = useState(false)
+  const [scanning, setScanning] = useState(false)
 
-  const handleConnect = async () => {
-    if (!code.trim()) { setCodeError('Enter a location code'); return }
+  const handleConnect = async (tokenOverride?: string) => {
+    const token = tokenOverride ?? code
+    if (!token.trim()) { setCodeError('Enter a location code'); return }
     setConnecting(true)
     setCodeError(undefined)
-    const { error, locationName } = await connectLocation(code)
+    const { error, locationName } = await connectLocation(token)
     setConnecting(false)
     if (error) {
       setCodeError(error)
@@ -282,8 +297,15 @@ function LocationsTab() {
     }
   }
 
+  const handleScan = (token: string) => {
+    setScanning(false)
+    handleConnect(token)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
+
+      {scanning && <QrScanner onScan={handleScan} onClose={() => setScanning(false)} />}
 
       {/* Connect a new location */}
       <div className="animate-fade-up">
@@ -306,9 +328,32 @@ function LocationsTab() {
           flexDirection: 'column',
           gap: 'var(--space-md)',
         }}>
-          <p style={{ fontSize: 'var(--text-base)', color: 'var(--pd-text-muted)', lineHeight: 1.55 }}>
-            Scan the QR code at your café, or enter the location code from the menu board or receipt.
-          </p>
+          {/* Scan button — primary action on mobile */}
+          <button
+            onClick={() => setScanning(true)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 10, width: '100%',
+              background: 'var(--pd-green-dark)', color: '#fff',
+              border: 'none', borderRadius: 'var(--radius-md)',
+              padding: '16px', cursor: 'pointer',
+              fontSize: 'var(--text-base)', fontWeight: 600,
+              fontFamily: 'var(--font-body)',
+            }}
+          >
+            <span style={{ fontSize: '22px' }}>📷</span>
+            Scan QR code
+          </button>
+
+          {/* Divider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--pd-gray-light)' }} />
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', fontWeight: 500 }}>
+              or enter code
+            </span>
+            <div style={{ flex: 1, height: 1, background: 'var(--pd-gray-light)' }} />
+          </div>
+
           <Input
             label="Location code"
             value={code}
@@ -318,7 +363,7 @@ function LocationsTab() {
             autoCapitalize="characters"
             autoCorrect="off"
           />
-          <Button variant="primary" loading={connecting} onClick={handleConnect}>
+          <Button variant="primary" loading={connecting} onClick={() => handleConnect()}>
             {connecting ? 'Connecting…' : 'Connect'}
           </Button>
         </div>

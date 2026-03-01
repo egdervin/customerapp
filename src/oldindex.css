@@ -31,13 +31,13 @@
   --font-body:    'DM Sans', system-ui, sans-serif;
 
   /* Base font size — larger for mobile readability */
-  --text-xs:   14px;
-  --text-sm:   16px;
-  --text-base: 18px;
-  --text-lg:   20px;
-  --text-xl:   24px;
-  --text-2xl:  30px;
-  --text-3xl:  40px;
+  --text-xs:   13px;
+  --text-sm:   15px;
+  --text-base: 17px;
+  --text-lg:   19px;
+  --text-xl:   22px;
+  --text-2xl:  28px;
+  --text-3xl:  36px;
 
   /* Spacing */
   --space-xs:  4px;

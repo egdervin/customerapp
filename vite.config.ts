@@ -3,4 +3,13 @@ import react from '@vitejs/plugin-react-swc'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'qr-scanner': ['html5-qrcode'],
+        }
+      }
+    }
+  }
 })
