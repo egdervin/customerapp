@@ -7,7 +7,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'qr-scanner': ['html5-qrcode'],
+          'qr-scanner': ['qr-scanner'],
         }
       }
     }

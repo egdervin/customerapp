@@ -51,6 +51,7 @@ interface AuthState {
   fetchSavedLocations: (customerId: string) => Promise<void>
   connectLocation: (token: string) => Promise<{ error: string | null; locationName?: string }>
   setHomeLocation: (customerLocationId: string) => Promise<{ error: string | null }>
+  removeLocation: (customerLocationId: string) => Promise<{ error: string | null }>
 }
 
 const generateQrToken = () =>
@@ -318,6 +319,38 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       .eq('id', customerLocationId)
 
     if (error) return { error: error.message }
+
+    await get().fetchSavedLocations(customerProfile.id)
+    return { error: null }
+  },
+
+  removeLocation: async (customerLocationId: string) => {
+    const { customerProfile, savedLocations } = get()
+    if (!customerProfile) return { error: 'Not signed in' }
+
+    if (savedLocations.length <= 1) {
+      return { error: 'You must have at least one location.' }
+    }
+
+    const removing = savedLocations.find(sl => sl.id === customerLocationId)
+
+    const { error } = await supabase
+      .from('customer_locations')
+      .delete()
+      .eq('id', customerLocationId)
+
+    if (error) return { error: error.message }
+
+    // If we removed the home location, promote the next one
+    if (removing?.is_home) {
+      const next = savedLocations.find(sl => sl.id !== customerLocationId)
+      if (next) {
+        await supabase
+          .from('customer_locations')
+          .update({ is_home: true })
+          .eq('id', next.id)
+      }
+    }
 
     await get().fetchSavedLocations(customerProfile.id)
     return { error: null }

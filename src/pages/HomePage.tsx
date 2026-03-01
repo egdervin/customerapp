@@ -276,7 +276,7 @@ function WalletTab({ customerProfile }: { customerProfile: { qr_token: string | 
 // ─── Locations Tab ────────────────────────────────────────────────────────────
 
 function LocationsTab() {
-  const { savedLocations, connectLocation, setHomeLocation } = useAuthStore()
+  const { savedLocations, connectLocation, setHomeLocation, removeLocation } = useAuthStore()
   const [code, setCode] = useState('')
   const [codeError, setCodeError] = useState<string | undefined>()
   const [connecting, setConnecting] = useState(false)
@@ -420,24 +420,49 @@ function LocationsTab() {
                   )}
                 </div>
                 {!sl.is_home && (
-                  <button
-                    onClick={() => setHomeLocation(sl.id).then(({ error }) => {
-                      if (error) toast.error(error)
-                      else toast.success(`${sl.location.name} set as home`)
-                    })}
-                    style={{
-                      background: 'none',
-                      border: '1px solid var(--pd-gray-mid)',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '6px 12px',
-                      fontSize: 'var(--text-sm)',
-                      color: 'var(--pd-text-muted)',
-                      cursor: 'pointer',
-                      fontFamily: 'var(--font-body)',
-                    }}
-                  >
-                    Set home
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      onClick={() => setHomeLocation(sl.id).then(({ error }) => {
+                        if (error) toast.error(error)
+                        else toast.success(`${sl.location.name} set as home`)
+                      })}
+                      style={{
+                        background: 'none',
+                        border: '1px solid var(--pd-gray-mid)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '6px 12px',
+                        fontSize: 'var(--text-sm)',
+                        color: 'var(--pd-text-muted)',
+                        cursor: 'pointer',
+                        fontFamily: 'var(--font-body)',
+                      }}
+                    >
+                      Set home
+                    </button>
+                    {savedLocations.length > 1 && (
+                      <button
+                        onClick={() => {
+                          if (!confirm(`Remove ${sl.location.name}?`)) return
+                          removeLocation(sl.id).then(({ error }) => {
+                            if (error) toast.error(error)
+                            else toast.success(`${sl.location.name} removed`)
+                          })
+                        }}
+                        style={{
+                          background: 'none',
+                          border: '1px solid var(--pd-gray-mid)',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '6px 10px',
+                          fontSize: 'var(--text-sm)',
+                          color: 'var(--pd-red)',
+                          cursor: 'pointer',
+                          fontFamily: 'var(--font-body)',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
