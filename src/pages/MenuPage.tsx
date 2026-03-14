@@ -111,9 +111,13 @@ function ModifierModal({ item, onConfirm, onCancel }: {
     setSelections(prev => {
       const current = prev[group.group_id] ?? []
       if (group.selection_type === 'pick_one') {
+        // Radio — always replace
         return { ...prev, [group.group_id]: [optionId] }
       }
-      const maxSel = group.max_selections > 0 ? group.max_selections : Infinity
+      // For pick_multiple: unlimited. For pick_up_to_max / pick_up_to_max_free: honor max_selections.
+      const maxSel = (group.selection_type === 'pick_multiple')
+        ? Infinity
+        : group.max_selections > 0 ? group.max_selections : Infinity
       if (current.includes(optionId)) {
         return { ...prev, [group.group_id]: current.filter(id => id !== optionId) }
       }
@@ -167,7 +171,8 @@ function ModifierModal({ item, onConfirm, onCancel }: {
         <div style={{ overflowY: 'auto', flex: 1, padding: '0 var(--page-px)' }}>
           {item.modifiers.map(group => {
             const chosen   = selections[group.group_id] ?? []
-            const maxLabel = group.selection_type === 'pick_one' ? 'Choose 1'
+            const maxLabel = group.selection_type === 'pick_one'    ? 'Choose 1'
+              : group.selection_type === 'pick_multiple'             ? 'Choose any'
               : group.max_selections > 0 ? `Choose up to ${group.max_selections}` : 'Choose any'
             return (
               <div key={group.group_id} style={{ marginBottom: 'var(--space-lg)' }}>
