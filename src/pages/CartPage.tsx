@@ -69,6 +69,8 @@ function slotToMinutes(t: string): number {
   }
   return Number(t)
 }
+
+function buildScheduledAt(dateStr: string, slotStart: string): string {
   // Combine date + slot start time into ISO string (local time)
   return new Date(`${dateStr}T${slotStart}:00`).toISOString()
 }

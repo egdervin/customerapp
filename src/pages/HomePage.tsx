@@ -287,6 +287,7 @@ function LocationsTab() {
   const [codeError, setCodeError] = useState<string | undefined>()
   const [connecting, setConnecting] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [open, setOpen] = useState(false)
 
   const handleConnect = async (tokenOverride?: string) => {
     const token = tokenOverride ?? code
@@ -313,66 +314,90 @@ function LocationsTab() {
 
       {scanning && <QrScanner onScan={handleScan} onClose={() => setScanning(false)} />}
 
-      {/* Connect a new location */}
+      {/* Connect a new location — collapsible */}
       <div className="animate-fade-up">
-        <p style={{
-          fontSize: 'var(--text-xs)',
-          fontWeight: 600,
-          color: 'var(--pd-text-muted)',
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          marginBottom: 'var(--space-md)',
-        }}>
-          Connect a location
-        </p>
-        <div style={{
-          background: 'var(--pd-white)',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-lg)',
-          border: '1px solid var(--pd-gray-light)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-md)',
-        }}>
-          {/* Scan button — primary action on mobile */}
-          <button
-            onClick={() => setScanning(true)}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 10, width: '100%',
-              background: 'var(--pd-green-dark)', color: '#fff',
-              border: 'none', borderRadius: 'var(--radius-md)',
-              padding: '16px', cursor: 'pointer',
-              fontSize: 'var(--text-base)', fontWeight: 600,
-              fontFamily: 'var(--font-body)',
-            }}
-          >
-            <span style={{ fontSize: '22px' }}>📷</span>
-            Scan QR code
-          </button>
-
-          {/* Divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--pd-gray-light)' }} />
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', fontWeight: 500 }}>
-              or enter code
+        {/* Tappable header */}
+        <button
+          onClick={() => setOpen(o => !o)}
+          style={{
+            width: '100%',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12,
+            background: open ? 'var(--pd-green-dark)' : 'var(--pd-green)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: open ? 'var(--radius-md) var(--radius-md) 0 0' : 'var(--radius-md)',
+            padding: '14px var(--space-lg)',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-body)',
+            transition: 'border-radius 0.15s ease, background 0.15s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '20px' }}>📍</span>
+            <span style={{ fontSize: 'var(--text-base)', fontWeight: 700 }}>
+              Connect a location
             </span>
-            <div style={{ flex: 1, height: 1, background: 'var(--pd-gray-light)' }} />
           </div>
+          <span style={{
+            fontSize: '18px', lineHeight: 1,
+            transform: open ? 'rotate(90deg)' : 'rotate(270deg)',
+            transition: 'transform 0.2s ease',
+            opacity: 0.8,
+            display: 'inline-block',
+          }}>
+            ›
+          </span>
+        </button>
 
-          <Input
-            label="Location code"
-            value={code}
-            onChange={e => { setCode(e.target.value.toUpperCase()); setCodeError(undefined) }}
-            error={codeError}
-            placeholder="e.g. A3F8C2"
-            autoCapitalize="characters"
-            autoCorrect="off"
-          />
-          <Button variant="primary" loading={connecting} onClick={() => handleConnect()}>
-            {connecting ? 'Connecting…' : 'Connect'}
-          </Button>
-        </div>
+        {/* Expandable body */}
+        {open && (
+          <div style={{
+            background: 'var(--pd-white)',
+            borderRadius: '0 0 var(--radius-md) var(--radius-md)',
+            padding: 'var(--space-lg)',
+            border: '1px solid var(--pd-green)',
+            borderTop: 'none',
+            display: 'flex', flexDirection: 'column', gap: 'var(--space-md)',
+          }}>
+            <button
+              onClick={() => setScanning(true)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 10, width: '100%',
+                background: 'var(--pd-green-dark)', color: '#fff',
+                border: 'none', borderRadius: 'var(--radius-md)',
+                padding: '16px', cursor: 'pointer',
+                fontSize: 'var(--text-base)', fontWeight: 600,
+                fontFamily: 'var(--font-body)',
+              }}
+            >
+              <span style={{ fontSize: '22px' }}>📷</span>
+              Scan QR code
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: 1, height: 1, background: 'var(--pd-gray-light)' }} />
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', fontWeight: 500 }}>
+                or enter code
+              </span>
+              <div style={{ flex: 1, height: 1, background: 'var(--pd-gray-light)' }} />
+            </div>
+
+            <Input
+              label="Location code"
+              value={code}
+              onChange={e => { setCode(e.target.value.toUpperCase()); setCodeError(undefined) }}
+              error={codeError}
+              placeholder="e.g. A3F8C2"
+              autoCapitalize="characters"
+              autoCorrect="off"
+            />
+            <Button variant="primary" loading={connecting} onClick={() => handleConnect()}>
+              {connecting ? 'Connecting…' : 'Connect'}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Saved locations */}
