@@ -244,32 +244,26 @@ export function MenuPage() {
     setOrderingOpen(!!(ow?.is_active && isCurrentlyOpen(ow.window_open, ow.window_close)))
 
     // Find the active café menu for this location.
-    // Prefer the default static menu; fall back to any active static menu.
+    // Priority: default static → any static → default rotational → any rotational
     let resolvedMenuId: string | null = null
     {
-      const { data: defaultMenu } = await supabase
+      const { data: allActive } = await supabase
         .from('menus')
-        .select('id')
+        .select('id, menu_type, is_default')
         .eq('location_id', locationId)
         .eq('status', 'active')
-        .eq('menu_type', 'static')
-        .eq('is_default', true)
-        .maybeSingle()
+        .in('menu_type', ['static', 'rotational'])
+        .order('created_at', { ascending: true })
 
-      if (defaultMenu?.id) {
-        resolvedMenuId = defaultMenu.id
-      } else {
-        const { data: anyActive } = await supabase
-          .from('menus')
-          .select('id')
-          .eq('location_id', locationId)
-          .eq('status', 'active')
-          .eq('menu_type', 'static')
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle()
-        resolvedMenuId = anyActive?.id ?? null
-      }
+      const candidates = allActive ?? []
+      const pick =
+        candidates.find(m => m.menu_type === 'static' && m.is_default) ??
+        candidates.find(m => m.menu_type === 'static') ??
+        candidates.find(m => m.menu_type === 'rotational' && m.is_default) ??
+        candidates.find(m => m.menu_type === 'rotational') ??
+        null
+
+      resolvedMenuId = pick?.id ?? null
     }
 
     if (!resolvedMenuId) { setLoading(false); return }
