@@ -21,13 +21,13 @@ interface MenuItemRaw {
     id:          string
     name:        string
     description: string | null
-    price:       number
+    base_price:  number
     image_url:   string | null
   } | {
     id:          string
     name:        string
     description: string | null
-    price:       number
+    base_price:  number
     image_url:   string | null
   }[]
 }
@@ -41,7 +41,7 @@ interface MenuItem {
     id:          string
     name:        string
     description: string | null
-    price:       number
+    base_price:  number
     image_url:   string | null
   }
 }
@@ -95,7 +95,7 @@ function ItemCard({
   onAdd:  (item: MenuItem) => void
 }) {
   const product = item.products
-  const priceCents = Math.round(product.price * 100)
+  const priceCents = Math.round(product.base_price * 100)
 
   return (
     <div style={{
@@ -243,30 +243,33 @@ export function MenuPage() {
     setPickupWindow(pw)
     setOrderingOpen(!!(ow?.is_active && isCurrentlyOpen(ow.window_open, ow.window_close)))
 
-    // Find the active café menu for this location
-    const today = new Date().toISOString().split('T')[0]
-    const { data: schedule } = await supabase
-      .from('menu_schedules')
-      .select('menu_id')
-      .eq('location_id', locationId)
-      .lte('start_date', today)
-      .or(`end_date.is.null,end_date.gte.${today}`)
-      .order('start_date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    // Fallback: just get the first active menu for this location
-    let resolvedMenuId = schedule?.menu_id ?? null
-    if (!resolvedMenuId) {
-      const { data: fallbackMenu } = await supabase
+    // Find the active café menu for this location.
+    // Prefer the default static menu; fall back to any active static menu.
+    let resolvedMenuId: string | null = null
+    {
+      const { data: defaultMenu } = await supabase
         .from('menus')
         .select('id')
         .eq('location_id', locationId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: true })
-        .limit(1)
+        .eq('status', 'active')
+        .eq('menu_type', 'static')
+        .eq('is_default', true)
         .maybeSingle()
-      resolvedMenuId = fallbackMenu?.id ?? null
+
+      if (defaultMenu?.id) {
+        resolvedMenuId = defaultMenu.id
+      } else {
+        const { data: anyActive } = await supabase
+          .from('menus')
+          .select('id')
+          .eq('location_id', locationId)
+          .eq('status', 'active')
+          .eq('menu_type', 'static')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        resolvedMenuId = anyActive?.id ?? null
+      }
     }
 
     if (!resolvedMenuId) { setLoading(false); return }
@@ -283,7 +286,7 @@ export function MenuPage() {
       .from('menu_items')
       .select(`
         id, section_id, remote_order_allowed, remote_order_note,
-        products ( id, name, description, price, image_url )
+        products ( id, name, description, base_price, image_url )
       `)
       .eq('menu_id', resolvedMenuId)
       .eq('remote_order_allowed', true)
@@ -306,7 +309,7 @@ export function MenuPage() {
     addItem({
       menu_item_id:  item.id,
       product_name:  item.products.name,
-      unit_price:    Math.round(item.products.price * 100),
+      unit_price:    Math.round(item.products.base_price * 100),
       modifiers:     [],
       image_url:     item.products.image_url,
     }, locationId, menuId)
