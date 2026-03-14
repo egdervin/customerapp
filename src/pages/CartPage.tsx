@@ -27,7 +27,17 @@ function formatCents(cents: number): string {
 }
 
 function formatTime(t: string): string {
-  const [h, m] = t.split(':').map(Number)
+  if (!t) return ''
+  let h: number, m: number
+  if (typeof t === 'string' && t.includes(':')) {
+    const parts = t.split(':').map(Number)
+    h = parts[0]; m = parts[1]
+  } else {
+    const mins = Number(t)
+    if (isNaN(mins)) return t
+    h = Math.floor(mins / 60); m = mins % 60
+  }
+  if (isNaN(h) || isNaN(m)) return t
   const ampm = h >= 12 ? 'pm' : 'am'
   const h12  = h % 12 || 12
   return m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`
@@ -37,7 +47,28 @@ function getTodayDateStr(): string {
   return new Date().toISOString().split('T')[0]
 }
 
-function buildScheduledAt(dateStr: string, slotStart: string): string {
+// Normalize a time value (HH:MM, HH:MM:SS, or numeric minutes) to "HH:MM"
+function normalizeSlotTime(t: string | number): string {
+  let h: number, m: number
+  if (typeof t === 'number') {
+    h = Math.floor(t / 60); m = t % 60
+  } else if (typeof t === 'string' && t.includes(':')) {
+    const parts = t.split(':').map(Number)
+    h = parts[0]; m = parts[1]
+  } else {
+    const mins = Number(t)
+    h = Math.floor(mins / 60); m = mins % 60
+  }
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+}
+
+function slotToMinutes(t: string): number {
+  if (t.includes(':')) {
+    const [h, m] = t.split(':').map(Number)
+    return h * 60 + m
+  }
+  return Number(t)
+}
   // Combine date + slot start time into ISO string (local time)
   return new Date(`${dateStr}T${slotStart}:00`).toISOString()
 }
@@ -88,7 +119,13 @@ export function CartPage() {
         .eq('is_active', true),
     ])
 
-    setSlots((slotsRes.slots ?? []).filter((s: Slot) => !s.is_full))
+    const now       = new Date()
+    const nowMins   = now.getHours() * 60 + now.getMinutes() + 15  // must be 15+ min from now
+    const available = (slotsRes.slots ?? [])
+      .filter((s: Slot) => !s.is_full)
+      .map((s: Slot) => ({ ...s, start_time: normalizeSlotTime(s.start_time as any), end_time: normalizeSlotTime(s.end_time as any) }))
+      .filter((s: Slot) => slotToMinutes(s.start_time) >= nowMins)
+    setSlots(available)
     setTaxRates((taxRes.data ?? []) as TaxRate[])
     setSlotsLoading(false)
   }
@@ -292,29 +329,32 @@ export function CartPage() {
               </p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {slots.map(slot => (
                 <button
                   key={slot.start_time}
                   onClick={() => setSelectedSlot(slot.start_time)}
                   style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '14px 16px',
                     background: selectedSlot === slot.start_time ? 'var(--pd-green-dark)' : 'var(--pd-white)',
                     color: selectedSlot === slot.start_time ? '#fff' : 'var(--pd-text)',
                     border: `1.5px solid ${selectedSlot === slot.start_time ? 'var(--pd-green-dark)' : 'var(--pd-gray-light)'}`,
                     borderRadius: 'var(--radius-sm)',
-                    padding: '10px 6px',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-body)',
-                    fontSize: 'var(--text-xs)',
-                    fontWeight: 600,
-                    textAlign: 'center',
-                    transition: 'all 0.15s ease',
+                    cursor: 'pointer', fontFamily: 'var(--font-body)',
+                    transition: 'all 0.15s ease', width: '100%',
                   }}
                 >
-                  {formatTime(slot.start_time)}
-                  <div style={{ fontSize: 11, fontWeight: 400, marginTop: 2, opacity: 0.7 }}>
-                    {slot.available} left
-                  </div>
+                  <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
+                    {formatTime(slot.start_time)}
+                    {slot.end_time ? ` – ${formatTime(slot.end_time)}` : ''}
+                  </span>
+                  <span style={{
+                    fontSize: 'var(--text-xs)', fontWeight: 500,
+                    color: selectedSlot === slot.start_time ? 'rgba(255,255,255,0.7)' : 'var(--pd-text-muted)',
+                  }}>
+                    {slot.available} spot{slot.available !== 1 ? 's' : ''} left
+                  </span>
                 </button>
               ))}
             </div>
