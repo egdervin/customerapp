@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { QRCodeSVG as QRCode } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../stores/authStore'
+import { supabase } from '../lib/supabase'
 import { Logo } from '../components/Logo'
 import { Button } from '../components/Button'
 import { Input } from '../components/Input'
@@ -13,12 +15,15 @@ const TABS: { id: Tab; label: string; comingSoon?: boolean }[] = [
   { id: 'wallet',       label: 'Wallet' },
   { id: 'locations',    label: 'Locations' },
   { id: 'transactions', label: 'History' },
-  { id: 'order',        label: 'Order', comingSoon: true },
+  { id: 'order',        label: 'Orders' },
 ]
 
 export function HomePage() {
   const { customerProfile, savedLocations, signOut, fetchSavedLocations } = useAuthStore()
-  const [activeTab, setActiveTab] = useState<Tab>('wallet')
+  const navigate       = useNavigate()
+  const [searchParams] = useSearchParams()
+  const initialTab     = (searchParams.get('tab') as Tab) ?? 'wallet'
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
 
   // When PWA comes back into focus (e.g. after browser-based join flow),
   // refresh saved locations so new connections show up immediately
@@ -176,7 +181,7 @@ export function HomePage() {
         {activeTab === 'wallet'       && <WalletTab customerProfile={customerProfile} />}
         {activeTab === 'locations'    && <LocationsTab />}
         {activeTab === 'transactions' && <TransactionsTab />}
-        {activeTab === 'order'        && <ComingSoonTab label="Order ahead" emoji="🛒" description="Place orders and skip the line." />}
+        {activeTab === 'order'        && <OrdersTab />}
       </div>
     </div>
   )
@@ -384,7 +389,10 @@ function LocationsTab() {
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
             {savedLocations.map(sl => (
-              <div key={sl.id} style={{
+              <div
+                key={sl.id}
+                onClick={() => navigate(`/menu/${sl.location_id}`)}
+                style={{
                 background: 'var(--pd-white)',
                 borderRadius: 'var(--radius-md)',
                 padding: 'var(--space-md) var(--space-lg)',
@@ -392,6 +400,7 @@ function LocationsTab() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                cursor: 'pointer',
               }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
@@ -495,16 +504,147 @@ function TransactionsTab() {
   return (
     <div style={{ textAlign: 'center', paddingTop: 'var(--space-2xl)' }}>
       <div style={{ fontSize: '44px', marginBottom: 'var(--space-md)' }}>📋</div>
-      <p style={{
-        fontFamily: 'var(--font-display)',
-        fontSize: 'var(--text-2xl)',
-        marginBottom: 'var(--space-sm)',
-      }}>
-        No transactions yet
+      <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-sm)' }}>
+        Coming Soon
       </p>
       <p style={{ fontSize: 'var(--text-base)', color: 'var(--pd-text-muted)' }}>
-        Your purchase history will appear here.
+        Transaction history will appear here.
       </p>
+    </div>
+  )
+}
+
+
+// ─── Orders Tab ───────────────────────────────────────────────────────────────
+
+function OrdersTab() {
+  const { customerProfile } = useAuthStore()
+  const navigate = useNavigate()
+  const [orders, setOrders]   = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!customerProfile) return
+    loadOrders()
+  }, [customerProfile])
+
+  async function loadOrders() {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 60)
+    const { data } = await supabase
+      .from('remote_orders')
+      .select(`
+        id, order_number, state, pickup_slot, pickup_date, total_cents, created_at,
+        locations ( name ),
+        remote_order_items ( product_name, quantity )
+      `)
+      .eq('customer_id', customerProfile!.id)
+      .gte('created_at', cutoff.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    // Deduplicate items
+    const orders = (data ?? []).map((o: any) => {
+      const seen = new Set<string>()
+      const items = (o.remote_order_items ?? []).filter((i: any) => {
+        if (seen.has(i.product_name)) return false
+        seen.add(i.product_name)
+        return true
+      })
+      return { ...o, remote_order_items: items }
+    })
+    setOrders(orders)
+    setLoading(false)
+  }
+
+  const STATE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+    pending:   { label: 'Processing',  color: '#92400e', bg: '#fffbeb' },
+    confirmed: { label: 'Confirmed',   color: '#166534', bg: '#f0fdf4' },
+    active:    { label: 'Being made',  color: '#1e40af', bg: '#eff6ff' },
+    completed: { label: 'Ready',       color: '#166534', bg: '#f0fdf4' },
+    cancelled: { label: 'Cancelled',   color: '#991b1b', bg: '#fff1f2' },
+  }
+
+  function formatTime(t: string): string {
+    const [h, m] = t.split(':').map(Number)
+    const ampm = h >= 12 ? 'pm' : 'am'
+    const h12  = h % 12 || 12
+    return m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`
+  }
+
+  function formatDate(d: string): string {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 60 }}>
+      <div style={{ width: 28, height: 28, border: '2px solid var(--pd-green-light)', borderTopColor: 'var(--pd-green)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+    </div>
+  )
+
+  if (orders.length === 0) return (
+    <div style={{ textAlign: 'center', paddingTop: 'var(--space-2xl)' }}>
+      <div style={{ fontSize: 44, marginBottom: 'var(--space-md)' }}>🛒</div>
+      <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', marginBottom: 'var(--space-sm)' }}>No orders yet</p>
+      <p style={{ fontSize: 'var(--text-base)', color: 'var(--pd-text-muted)' }}>
+        Your order history will appear here.
+      </p>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+      {orders.map((order) => {
+        const st = STATE_LABELS[order.state] ?? { label: order.state, color: 'var(--pd-text-muted)', bg: 'var(--pd-gray-light)' }
+        const itemSummary = order.remote_order_items
+          .slice(0, 2)
+          .map((i: any) => `${i.quantity}× ${i.product_name}`)
+          .join(', ') + (order.remote_order_items.length > 2 ? ` +${order.remote_order_items.length - 2} more` : '')
+
+        return (
+          <div
+            key={order.id}
+            onClick={() => navigate(`/order/confirmation?order_id=${order.id}`)}
+            style={{
+              background: 'var(--pd-white)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--pd-gray-light)',
+              padding: 'var(--space-md) var(--space-lg)',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+                #{order.order_number}
+                {order.locations && (
+                  <span style={{ fontWeight: 400, color: 'var(--pd-text-muted)', marginLeft: 6 }}>
+                    · {order.locations.name}
+                  </span>
+                )}
+              </p>
+              <span style={{
+                fontSize: 12, fontWeight: 600, padding: '3px 10px',
+                borderRadius: 'var(--radius-full)',
+                background: st.bg, color: st.color,
+              }}>
+                {st.label}
+              </span>
+            </div>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)' }}>
+              {formatDate(order.pickup_date)} · {formatTime(order.pickup_slot)} pickup
+            </p>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {itemSummary}
+            </p>
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, textAlign: 'right' }}>
+              ${(order.total_cents / 100).toFixed(2)}
+            </p>
+          </div>
+        )
+      })}
     </div>
   )
 }

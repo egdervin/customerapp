@@ -8,6 +8,9 @@ import { LoginPage } from './pages/LoginPage'
 import { ProfileSetupPage } from './pages/ProfileSetupPage'
 import { HomePage } from './pages/HomePage'
 import { JoinPage } from './pages/JoinPage'
+import { MenuPage } from './pages/MenuPage'
+import { CartPage } from './pages/CartPage'
+import { OrderConfirmationPage } from './pages/OrderConfirmationPage'
 import { InstallPrompt } from './components/InstallPrompt'
 import './index.css'
 
@@ -85,6 +88,9 @@ export default function App() {
         <Route path="/setup"   element={<ProfileSetupPage />} />
         <Route path="/home"    element={<AuthGuard><HomePage /></AuthGuard>} />
         <Route path="/join/:token" element={<JoinPage />} />
+        <Route path="/menu/:locationId" element={<AuthGuard><MenuPage /></AuthGuard>} />
+        <Route path="/cart" element={<AuthGuard><CartPage /></AuthGuard>} />
+        <Route path="/order/confirmation" element={<AuthGuard><OrderConfirmationPage /></AuthGuard>} />
         <Route path="*"        element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
