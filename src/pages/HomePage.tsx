@@ -282,6 +282,7 @@ function WalletTab({ customerProfile }: { customerProfile: { qr_token: string | 
 
 function LocationsTab() {
   const { savedLocations, connectLocation, setHomeLocation, removeLocation } = useAuthStore()
+  const navigate = useNavigate()
   const [code, setCode] = useState('')
   const [codeError, setCodeError] = useState<string | undefined>()
   const [connecting, setConnecting] = useState(false)

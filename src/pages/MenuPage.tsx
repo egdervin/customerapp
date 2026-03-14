@@ -12,6 +12,26 @@ interface MenuSection {
   display_order: number
 }
 
+interface MenuItemRaw {
+  id:                    string
+  section_id:            string
+  remote_order_allowed:  boolean
+  remote_order_note:     string | null
+  products: {
+    id:          string
+    name:        string
+    description: string | null
+    price:       number
+    image_url:   string | null
+  } | {
+    id:          string
+    name:        string
+    description: string | null
+    price:       number
+    image_url:   string | null
+  }[]
+}
+
 interface MenuItem {
   id:                    string
   section_id:            string
@@ -270,7 +290,12 @@ export function MenuPage() {
       .order('display_order')
 
     setSections((sectionsData ?? []) as MenuSection[])
-    setMenuItems((itemsData ?? []) as MenuItem[])
+    // Supabase may return products as array or object depending on relation type
+    const normalized: MenuItem[] = (itemsData ?? []).map((item: any) => ({
+      ...item,
+      products: Array.isArray(item.products) ? item.products[0] : item.products,
+    })).filter((item: any) => item.products)
+    setMenuItems(normalized)
     if (sectionsData?.length) setActiveSection(sectionsData[0].id)
 
     setLoading(false)
