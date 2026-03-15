@@ -224,14 +224,16 @@ export function CartPage() {
         return
       }
 
-      // Clear cart then redirect to Square.
+      // Open Square FIRST, then clear the cart.
+      // Clearing first triggers items.length === 0 → empty-cart screen renders
+      // immediately, before Safari has even opened — jarring for the user.
       // Use window.open so PWA scope restrictions don't block the navigation.
-      clearCart()
       const opened = window.open(checkoutUrl, '_blank')
       if (!opened) {
         // Popup was blocked — fall back to same-tab navigation
         window.location.assign(checkoutUrl)
       }
+      clearCart()
       // Reset button in case user returns to this tab (e.g. opened in new tab)
       setTimeout(() => setCheckingOut(false), 3000)
 
@@ -241,7 +243,10 @@ export function CartPage() {
     }
   }
 
-  if (items.length === 0) {
+  // Don't show the empty-cart screen while checkout is in progress —
+  // the cart clears as soon as window.open fires, but the user is still
+  // transitioning to Square. Let the "Opening payment…" button state show instead.
+  if (items.length === 0 && !checkingOut) {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column',

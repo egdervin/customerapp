@@ -61,6 +61,13 @@ export function OrderConfirmationPage() {
 
   useEffect(() => {
     if (!orderId) { setErrorKind('notfound'); setLoading(false); return }
+    // When Square redirects back after payment, the page opens in Safari — not
+    // the PWA. The Supabase session lives in the PWA's localStorage and is not
+    // accessible there. RLS will silently return 0 rows (not an auth error code),
+    // which would show "Order not found" to a customer who just successfully paid.
+    // Skip the query entirely in non-standalone context and show the success
+    // fallback directly — we know payment succeeded because Square sent this URL.
+    if (!isStandalone) { setErrorKind('autherror'); setLoading(false); return }
     loadOrder()
   }, [orderId])
 
