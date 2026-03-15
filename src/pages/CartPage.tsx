@@ -174,11 +174,13 @@ export function CartPage() {
 
     console.log('[Checkout] Calling edge function…')
     try {
-      console.log('[Checkout] Fetching create-remote-order…')
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    console.log('[Checkout] Fetching create-remote-order…')
       const res = await fetch(`${supabaseUrl}/functions/v1/create-remote-order`, {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',
+          'apikey':        supabaseKey,
           'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
