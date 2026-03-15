@@ -44,7 +44,10 @@ function formatTime(t: string): string {
 }
 
 function getTodayDateStr(): string {
-  return new Date().toISOString().split('T')[0]
+  // Use local date, NOT toISOString() which is UTC and would give the wrong date
+  // for users who are behind UTC (e.g. CDT = UTC-5)
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 // Normalize a time value (HH:MM, HH:MM:SS, or numeric minutes) to "HH:MM"
@@ -109,9 +112,12 @@ export function CartPage() {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+    // Pass local timezone offset (minutes behind UTC, e.g. CDT = 300) so the
+    // edge function can compute "now" in local time rather than UTC
+    const tzOffset = new Date().getTimezoneOffset()
     const [slotsRes, taxRes] = await Promise.all([
       fetch(
-        `${supabaseUrl}/functions/v1/get-available-slots?location_id=${locationId}&date=${today}`,
+        `${supabaseUrl}/functions/v1/get-available-slots?location_id=${locationId}&date=${today}&tz_offset=${tzOffset}`,
         { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
       ).then(r => r.json()).catch(() => ({ slots: [] })),
       supabase
@@ -139,14 +145,36 @@ export function CartPage() {
 
     const scheduledAt = buildScheduledAt(today, selectedSlot)
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-    const { data: { session } } = await supabase.auth.getSession()
+
+    // Always refresh the session to guarantee a non-expired JWT.
+    // getSession() can return a stale cached token in PWA contexts.
+    let accessToken: string | null = null
+    try {
+      const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession()
+      if (refreshed?.session?.access_token) {
+        accessToken = refreshed.session.access_token
+      } else {
+        // Fallback: use cached session
+        const { data: { session: cached } } = await supabase.auth.getSession()
+        accessToken = cached?.access_token ?? null
+      }
+    } catch {
+      const { data: { session: cached } } = await supabase.auth.getSession()
+      accessToken = cached?.access_token ?? null
+    }
+
+    if (!accessToken) {
+      setCheckoutError('Your session has expired. Please sign in again.')
+      setCheckingOut(false)
+      return
+    }
 
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/create-remote-order`, {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           location_id:   locationId,
