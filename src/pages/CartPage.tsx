@@ -201,11 +201,25 @@ export function CartPage() {
         return
       }
 
-      // Clear cart before redirecting to Square
-      clearCart()
+      const checkoutUrl = data.checkout_url || data.long_url
+      console.log('[Plusdine] Square checkout URL:', checkoutUrl)
 
-      // Redirect to Square hosted checkout
-      window.location.href = data.checkout_url
+      if (!checkoutUrl) {
+        setCheckoutError('Payment link unavailable. Please try again.')
+        setCheckingOut(false)
+        return
+      }
+
+      // Clear cart then redirect to Square.
+      // Use window.open so PWA scope restrictions don't block the navigation.
+      clearCart()
+      const opened = window.open(checkoutUrl, '_blank')
+      if (!opened) {
+        // Popup was blocked — fall back to same-tab navigation
+        window.location.assign(checkoutUrl)
+      }
+      // Reset button in case user returns to this tab (e.g. opened in new tab)
+      setTimeout(() => setCheckingOut(false), 3000)
 
     } catch (e) {
       setCheckoutError('Network error. Please check your connection and try again.')
@@ -454,7 +468,7 @@ export function CartPage() {
           }}
         >
           {checkingOut
-            ? 'Redirecting to payment…'
+            ? 'Opening payment…'
             : !selectedSlot
               ? 'Select a pickup time'
               : `Pay ${formatCents(totalCents)} · ${formatTime(selectedSlot)} pickup`
