@@ -150,15 +150,22 @@ export function CartPage() {
     // getSession() can return a stale cached token in PWA contexts.
     let accessToken: string | null = null
     try {
-      const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession()
-      if (refreshed?.session?.access_token) {
-        accessToken = refreshed.session.access_token
+      // Race refreshSession against a 5s timeout — in incognito or
+      // after a long idle, refreshSession can hang indefinitely.
+      const refreshPromise = supabase.auth.refreshSession()
+      const timeoutPromise = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
+      const winner = await Promise.race([refreshPromise, timeoutPromise])
+
+      if (winner && 'data' in winner && winner.data?.session?.access_token) {
+        accessToken = winner.data.session.access_token
+        console.log('[Checkout] Using refreshed token')
       } else {
-        // Fallback: use cached session
+        console.log('[Checkout] Refresh timed out or returned no token, trying cached session')
         const { data: { session: cached } } = await supabase.auth.getSession()
         accessToken = cached?.access_token ?? null
       }
-    } catch {
+    } catch (e) {
+      console.warn('[Checkout] Session refresh error, trying cached session', e)
       const { data: { session: cached } } = await supabase.auth.getSession()
       accessToken = cached?.access_token ?? null
     }
@@ -169,7 +176,9 @@ export function CartPage() {
       return
     }
 
+    console.log('[Checkout] Token obtained, calling edge function…')
     try {
+      console.log('[Checkout] Fetching create-remote-order…')
       const res = await fetch(`${supabaseUrl}/functions/v1/create-remote-order`, {
         method:  'POST',
         headers: {
@@ -193,6 +202,7 @@ export function CartPage() {
         }),
       })
 
+      console.log('[Checkout] Edge function responded:', res.status)
       const data = await res.json()
 
       if (!res.ok) {

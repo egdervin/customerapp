@@ -1,10 +1,10 @@
-const CACHE = 'plusdine-v2'
+const CACHE = 'plusdine-v3'
 const APP_SHELL = [
   '/',
   '/index.html',
 ]
 
-// Install — cache only the app shell
+// Install — cache the app shell
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(c => c.addAll(APP_SHELL))
@@ -12,38 +12,61 @@ self.addEventListener('install', e => {
   self.skipWaiting()
 })
 
-// Activate — clear old caches
+// Activate — clear ALL old caches immediately
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+      Promise.all(keys.filter(k => k !== CACHE).map(k => {
+        console.log('[SW] Deleting old cache:', k)
+        return caches.delete(k)
+      }))
+    ).then(() => self.clients.claim())
   )
-  self.clients.claim()
 })
 
-// Fetch — only intercept navigation requests for the app shell
-// Let ALL other requests (Supabase, fonts, assets) pass through untouched
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url)
 
-  // Never touch API calls — let them go directly to the network
+  // Never intercept API calls, non-GET, or external URLs
   if (
     url.hostname.includes('supabase.co') ||
+    url.hostname.includes('square') ||
     url.protocol === 'chrome-extension:' ||
-    e.request.method !== 'GET'
+    e.request.method !== 'GET' ||
+    url.origin !== self.location.origin
   ) {
     return
   }
 
-  // For navigation requests, serve index.html from cache (SPA routing)
+  // Navigation requests (page loads): NETWORK FIRST, cache fallback
+  // This ensures fresh index.html after every deploy.
   if (e.request.mode === 'navigate') {
     e.respondWith(
-      caches.match('/index.html').then(cached => cached || fetch(e.request))
+      fetch(e.request)
+        .then(res => {
+          // Update cache with fresh response
+          const clone = res.clone()
+          caches.open(CACHE).then(c => c.put('/index.html', clone))
+          return res
+        })
+        .catch(() => caches.match('/index.html'))
     )
     return
   }
 
-  // For everything else (JS/CSS assets), network first, no caching
-  // This prevents the clone() error entirely
+  // Static assets (JS/CSS with hash names): cache first, then network
+  // These are immutable once deployed so cache is always valid.
+  if (url.pathname.match(/\.(js|css|png|svg|ico|woff2?)(\?.*)?$/)) {
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        if (cached) return cached
+        return fetch(e.request).then(res => {
+          const clone = res.clone()
+          caches.open(CACHE).then(c => c.put(e.request, clone))
+          return res
+        })
+      })
+    )
+    return
+  }
 })
