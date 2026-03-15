@@ -147,15 +147,29 @@ export function CartPage() {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 
     // Use the session already held in Zustand — no async storage calls needed.
-    // This avoids hangs caused by Supabase trying to access IndexedDB in incognito
-    // or after the browser has suspended background storage APIs.
     const accessToken = session?.access_token ?? null
     console.log('[Checkout] Token from store:', accessToken ? 'present' : 'missing')
 
     if (!accessToken) {
-      setCheckoutError('Your session has expired. Please sign in again.')
+      setCheckoutError('Your session has expired. Please sign out and sign in again.')
       setCheckingOut(false)
       return
+    }
+
+    // Decode JWT expiry without any async calls — JWT payload is just base64
+    try {
+      const payload = JSON.parse(atob(accessToken.split('.')[1]))
+      const expiresAt = (payload.exp ?? 0) * 1000   // convert to ms
+      const nowMs     = Date.now()
+      console.log('[Checkout] Token expires at:', new Date(expiresAt).toISOString(), '— now:', new Date(nowMs).toISOString())
+      if (expiresAt < nowMs + 30_000) {
+        // Expired or expires within 30s — don't even try, prompt re-login
+        setCheckoutError('Your session has expired. Please sign out and sign in again to place your order.')
+        setCheckingOut(false)
+        return
+      }
+    } catch {
+      console.warn('[Checkout] Could not decode JWT — proceeding anyway')
     }
 
     console.log('[Checkout] Calling edge function…')
@@ -186,6 +200,12 @@ export function CartPage() {
 
       console.log('[Checkout] Edge function responded:', res.status)
       const data = await res.json()
+
+      if (res.status === 401) {
+        setCheckoutError('Your session has expired. Please sign out and sign in again to place your order.')
+        setCheckingOut(false)
+        return
+      }
 
       if (!res.ok) {
         setCheckoutError(data.error ?? 'Checkout failed. Please try again.')

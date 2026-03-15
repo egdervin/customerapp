@@ -125,6 +125,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: null, session: null, customerProfile: null, savedLocations: [], needsProfileSetup: false })
       }
     })
+
+    // When the tab becomes visible again after being backgrounded, ask Supabase
+    // to refresh the session if it's close to expiry. This keeps the stored token
+    // fresh so checkout doesn't hit a stale-token 401.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session) set({ session, user: session.user })
+        }).catch(() => {/* ignore */})
+      }
+    })
   },
 
   fetchCustomerProfile: async (userId: string) => {
