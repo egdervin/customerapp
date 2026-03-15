@@ -38,47 +38,78 @@ function formatDate(d: string): string {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-export function OrderConfirmationPage() {
-  const navigate       = useNavigate()
-  const [params]       = useSearchParams()
-  const orderId        = params.get('order_id')
+// Detect whether we're running inside the installed PWA (standalone) or in a regular browser.
+// When Square redirects back after payment, the confirmation URL opens in Safari — not the PWA.
+// We use this flag to render different CTAs for each context.
+function getIsStandalone(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as any).standalone === true
+  )
+}
 
-  const [order,   setOrder]   = useState<OrderDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
+export function OrderConfirmationPage() {
+  const navigate          = useNavigate()
+  const [params]          = useSearchParams()
+  const orderId           = params.get('order_id')
+  const isStandalone      = getIsStandalone()
+
+  const [order,    setOrder]    = useState<OrderDetail | null>(null)
+  const [loading,  setLoading]  = useState(true)
+  // 'notfound' = genuinely missing, 'autherror' = session missing (expected in Safari context)
+  const [errorKind, setErrorKind] = useState<'notfound' | 'autherror' | null>(null)
 
   useEffect(() => {
-    if (!orderId) { setNotFound(true); setLoading(false); return }
+    if (!orderId) { setErrorKind('notfound'); setLoading(false); return }
     loadOrder()
   }, [orderId])
 
   async function loadOrder() {
-    const { data, error } = await supabase
-      .from('remote_orders')
-      .select(`
-        id, order_number, state, pickup_slot, pickup_date, scheduled_at,
-        total_cents, subtotal_cents, tax_cents, customer_name,
-        locations ( name, city, state ),
-        remote_order_items ( id, product_name, quantity, unit_price_cents, modifiers )
-      `)
-      .eq('id', orderId)
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('remote_orders')
+        .select(`
+          id, order_number, state, pickup_slot, pickup_date, scheduled_at,
+          total_cents, subtotal_cents, tax_cents, customer_name,
+          locations ( name, city, state ),
+          remote_order_items ( id, product_name, quantity, unit_price_cents, modifiers )
+        `)
+        .eq('id', orderId)
+        .single()
 
-    if (error || !data) { setNotFound(true); setLoading(false); return }
+      if (error) {
+        // Auth/JWT errors are expected when loaded in Safari — the PWA session
+        // is not available there. Show a graceful fallback rather than "not found".
+        const isAuthError =
+          error.code === 'PGRST301' ||
+          error.message?.toLowerCase().includes('jwt') ||
+          error.message?.toLowerCase().includes('auth') ||
+          error.message?.toLowerCase().includes('anon')
+        setErrorKind(isAuthError ? 'autherror' : 'notfound')
+        setLoading(false)
+        return
+      }
 
-    // Deduplicate items — remote_order_items has one row per station per item
-    // Show each unique product_name once with its quantity
-    const raw = data as any
-    const seen = new Set<string>()
-    const dedupedItems = (raw.remote_order_items ?? []).filter((item: any) => {
-      if (seen.has(item.product_name)) return false
-      seen.add(item.product_name)
-      return true
-    })
+      if (!data) { setErrorKind('notfound'); setLoading(false); return }
 
-    setOrder({ ...raw, remote_order_items: dedupedItems })
-    setLoading(false)
+      // Deduplicate items — remote_order_items may have one row per station per item
+      const raw  = data as any
+      const seen = new Set<string>()
+      const dedupedItems = (raw.remote_order_items ?? []).filter((item: any) => {
+        if (seen.has(item.product_name)) return false
+        seen.add(item.product_name)
+        return true
+      })
+
+      setOrder({ ...raw, remote_order_items: dedupedItems })
+      setLoading(false)
+    } catch (e) {
+      setErrorKind('autherror')
+      setLoading(false)
+    }
   }
+
+  // ─── Loading ────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -89,7 +120,79 @@ export function OrderConfirmationPage() {
     )
   }
 
-  if (notFound || !order) {
+  // ─── Auth error fallback (loaded in Safari, no PWA session) ─────────────────
+  // We know the order succeeded (Square confirmed it), we just can't query details.
+  // Show a warm confirmation and tell the user to return to the app.
+
+  if (errorKind === 'autherror') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--pd-off-white)', padding: 'var(--page-px)', textAlign: 'center', gap: 'var(--space-lg)' }}>
+
+        {/* Success icon */}
+        <div style={{ width: 80, height: 80, background: 'var(--pd-green-dark)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>
+          ✓
+        </div>
+
+        <div>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', color: 'var(--pd-text)', lineHeight: 1.2 }}>
+            Order Placed!
+          </p>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-text-muted)', marginTop: 8 }}>
+            Your payment was successful.
+          </p>
+          {orderId && (
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', marginTop: 4, fontFamily: 'monospace' }}>
+              Ref: {orderId.slice(0, 8).toUpperCase()}
+            </p>
+          )}
+        </div>
+
+        {/* Return-to-app banner */}
+        <div style={{
+          background: 'var(--pd-green-light)',
+          border: '1px solid #86efac',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-lg)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 12,
+          width: '100%',
+          maxWidth: 360,
+        }}>
+          <p style={{ fontSize: 28 }}>☝️</p>
+          <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--pd-green-dark)', lineHeight: 1.4 }}>
+            Tap <strong>Done</strong> above to return to the Plusdine app,
+            where you can view your full order details.
+          </p>
+        </div>
+
+        {/* Attempt to close this browser window (works when opened via window.open) */}
+        <button
+          onClick={() => { try { window.close() } catch (_) {} }}
+          style={{
+            background: 'var(--pd-green-dark)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            padding: '16px 40px',
+            fontSize: 'var(--text-base)',
+            fontWeight: 700,
+            fontFamily: 'var(--font-body)',
+            cursor: 'pointer',
+            width: '100%',
+            maxWidth: 360,
+          }}
+        >
+          Done
+        </button>
+      </div>
+    )
+  }
+
+  // ─── Genuinely not found ────────────────────────────────────────────────────
+
+  if (errorKind === 'notfound' || !order) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--pd-off-white)', padding: 'var(--page-px)', textAlign: 'center' }}>
         <div style={{ fontSize: 44, marginBottom: 'var(--space-md)' }}>❓</div>
@@ -100,6 +203,8 @@ export function OrderConfirmationPage() {
       </div>
     )
   }
+
+  // ─── Full receipt (loaded inside the PWA — standalone mode) ─────────────────
 
   const isPending   = order.state === 'pending'
   const isConfirmed = order.state === 'confirmed' || order.state === 'active'
@@ -145,7 +250,7 @@ export function OrderConfirmationPage() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, padding: 'var(--space-lg) var(--page-px)', paddingBottom: 'calc(var(--safe-bottom) + var(--space-2xl))', display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+      <div style={{ flex: 1, padding: 'var(--space-lg) var(--page-px)', paddingBottom: 'calc(var(--safe-bottom) + 100px)', display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
 
         {/* Pickup info */}
         <div style={{ background: 'var(--pd-white)', borderRadius: 'var(--radius-md)', border: '1px solid var(--pd-gray-light)', padding: 'var(--space-lg)' }}>
@@ -174,7 +279,7 @@ export function OrderConfirmationPage() {
           <span style={{ fontSize: 20 }}>{isPending ? '⏳' : '✅'}</span>
           <p style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: isPending ? '#92400e' : 'var(--pd-green-dark)' }}>
             {isPending
-              ? 'Payment processing… we\'ll have your order shortly.'
+              ? "Payment processing… we'll have your order shortly."
               : 'Payment confirmed — your order is on its way!'
             }
           </p>
@@ -207,6 +312,7 @@ export function OrderConfirmationPage() {
                 </p>
               </div>
             ))}
+
             {/* Totals */}
             <div style={{ borderTop: '1px solid var(--pd-gray-light)', padding: 'var(--space-md) var(--space-lg)', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -228,7 +334,7 @@ export function OrderConfirmationPage() {
         </div>
       </div>
 
-      {/* Sticky bottom nav */}
+      {/* Sticky bottom nav — PWA context only */}
       <div style={{
         position: 'fixed',
         bottom: 0, left: '50%', transform: 'translateX(-50%)',
