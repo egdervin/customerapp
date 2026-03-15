@@ -82,7 +82,7 @@ function buildScheduledAt(dateStr: string, slotStart: string): string {
 
 export function CartPage() {
   const navigate = useNavigate()
-  const { customerProfile, savedLocations } = useAuthStore()
+  const { customerProfile, savedLocations, session } = useAuthStore()
   const { items, locationId, menuId, removeItem, updateQty, clearCart, subtotalCents } = useCartStore()
 
   const [slots,         setSlots]         = useState<Slot[]>([])
@@ -146,29 +146,11 @@ export function CartPage() {
     const scheduledAt = buildScheduledAt(today, selectedSlot)
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 
-    // Always refresh the session to guarantee a non-expired JWT.
-    // getSession() can return a stale cached token in PWA contexts.
-    let accessToken: string | null = null
-    try {
-      // Race refreshSession against a 5s timeout — in incognito or
-      // after a long idle, refreshSession can hang indefinitely.
-      const refreshPromise = supabase.auth.refreshSession()
-      const timeoutPromise = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000))
-      const winner = await Promise.race([refreshPromise, timeoutPromise])
-
-      if (winner && 'data' in winner && winner.data?.session?.access_token) {
-        accessToken = winner.data.session.access_token
-        console.log('[Checkout] Using refreshed token')
-      } else {
-        console.log('[Checkout] Refresh timed out or returned no token, trying cached session')
-        const { data: { session: cached } } = await supabase.auth.getSession()
-        accessToken = cached?.access_token ?? null
-      }
-    } catch (e) {
-      console.warn('[Checkout] Session refresh error, trying cached session', e)
-      const { data: { session: cached } } = await supabase.auth.getSession()
-      accessToken = cached?.access_token ?? null
-    }
+    // Use the session already held in Zustand — no async storage calls needed.
+    // This avoids hangs caused by Supabase trying to access IndexedDB in incognito
+    // or after the browser has suspended background storage APIs.
+    const accessToken = session?.access_token ?? null
+    console.log('[Checkout] Token from store:', accessToken ? 'present' : 'missing')
 
     if (!accessToken) {
       setCheckoutError('Your session has expired. Please sign in again.')
@@ -176,7 +158,7 @@ export function CartPage() {
       return
     }
 
-    console.log('[Checkout] Token obtained, calling edge function…')
+    console.log('[Checkout] Calling edge function…')
     try {
       console.log('[Checkout] Fetching create-remote-order…')
       const res = await fetch(`${supabaseUrl}/functions/v1/create-remote-order`, {
