@@ -61,13 +61,11 @@ export function OrderConfirmationPage() {
 
   useEffect(() => {
     if (!orderId) { setErrorKind('notfound'); setLoading(false); return }
-    // When Square redirects back after payment, the page opens in Safari — not
-    // the PWA. The Supabase session lives in the PWA's localStorage and is not
-    // accessible there. RLS will silently return 0 rows (not an auth error code),
-    // which would show "Order not found" to a customer who just successfully paid.
-    // Skip the query entirely in non-standalone context and show the success
-    // fallback directly — we know payment succeeded because Square sent this URL.
-    if (!isStandalone) { setErrorKind('autherror'); setLoading(false); return }
+    // Always attempt the query. If it succeeds we show the full receipt.
+    // If it fails for any reason (RLS blocks anon access in Safari, session
+    // missing, network error, etc.) we show the success fallback — we know
+    // Square only sends this redirect URL after a confirmed payment, so
+    // "payment succeeded but we can't load details" is always the right message.
     loadOrder()
   }, [orderId])
 
@@ -85,19 +83,20 @@ export function OrderConfirmationPage() {
         .single()
 
       if (error) {
-        // Auth/JWT errors are expected when loaded in Safari — the PWA session
-        // is not available there. Show a graceful fallback rather than "not found".
-        const isAuthError =
-          error.code === 'PGRST301' ||
-          error.message?.toLowerCase().includes('jwt') ||
-          error.message?.toLowerCase().includes('auth') ||
-          error.message?.toLowerCase().includes('anon')
-        setErrorKind(isAuthError ? 'autherror' : 'notfound')
+        // Any query error → show success fallback (not "order not found")
+        // We know Square only sends this URL after confirmed payment.
+        setErrorKind('autherror')
         setLoading(false)
         return
       }
 
-      if (!data) { setErrorKind('notfound'); setLoading(false); return }
+      if (!data) {
+        // 0 rows = RLS blocked anon access (common when page loads outside PWA session)
+        // Still show success fallback, not "not found"
+        setErrorKind('autherror')
+        setLoading(false)
+        return
+      }
 
       // Deduplicate items — remote_order_items may have one row per station per item
       const raw  = data as any
@@ -111,6 +110,7 @@ export function OrderConfirmationPage() {
       setOrder({ ...raw, remote_order_items: dedupedItems })
       setLoading(false)
     } catch (e) {
+      // Network or parse error — still show success fallback
       setErrorKind('autherror')
       setLoading(false)
     }
