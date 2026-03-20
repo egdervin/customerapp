@@ -3,22 +3,21 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 interface OrderDetail {
-  id:             string
-  order_number:   string
-  state:          string
-  pickup_slot:    string
-  pickup_date:    string
-  scheduled_at:   string
-  total_cents:    number
-  subtotal_cents: number
-  tax_cents:      number
-  customer_name:  string
+  id:               string
+  order_number:     string | null
+  status:           string
+  pickup_time:      string   // ISO timestamp
+  total_cents:      number
+  subtotal_cents:   number
+  tax_cents:        number
+  notes:            string | null
   locations: { name: string; city: string | null; state: string | null } | null
   remote_order_items: {
     id:               string
     product_name:     string
     quantity:         number
     unit_price_cents: number
+    line_total_cents: number
     modifiers:        { name: string; price_delta: number }[]
   }[]
 }
@@ -34,9 +33,6 @@ function formatTime(t: string): string {
   return m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`
 }
 
-function formatDate(d: string): string {
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-}
 
 // Detect whether we're running inside the installed PWA (standalone) or in a regular browser.
 // When Square redirects back after payment, the confirmation URL opens in Safari — not the PWA.
@@ -74,10 +70,10 @@ export function OrderConfirmationPage() {
       const { data, error } = await supabase
         .from('remote_orders')
         .select(`
-          id, order_number, state, pickup_slot, pickup_date, scheduled_at,
-          total_cents, subtotal_cents, tax_cents, customer_name,
+          id, order_number, status, pickup_time,
+          total_cents, subtotal_cents, tax_cents, notes,
           locations ( name, city, state ),
-          remote_order_items ( id, product_name, quantity, unit_price_cents, modifiers )
+          remote_order_items ( id, product_name, quantity, unit_price_cents, line_total_cents, modifiers )
         `)
         .eq('id', orderId)
         .single()
@@ -213,8 +209,8 @@ export function OrderConfirmationPage() {
 
   // ─── Full receipt (loaded inside the PWA — standalone mode) ─────────────────
 
-  const isPending   = order.state === 'pending'
-  const isConfirmed = order.state === 'confirmed' || order.state === 'active'
+  const isPending   = order.status === 'pending'
+  const isConfirmed = order.status === 'confirmed' || order.status === 'active'
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--pd-off-white)', maxWidth: 480, margin: '0 auto' }}>
@@ -266,10 +262,10 @@ export function OrderConfirmationPage() {
             <div>
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-text-muted)', marginBottom: 2 }}>Pickup</p>
               <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--pd-text)' }}>
-                {formatTime(order.pickup_slot)}
+                {formatTime(new Date(order.pickup_time).toTimeString().slice(0, 5))}
               </p>
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-text-muted)' }}>
-                {formatDate(order.pickup_date)}
+                {new Date(order.pickup_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
               </p>
             </div>
           </div>

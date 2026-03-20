@@ -91,6 +91,7 @@ export function CartPage() {
   const [slotsLoading,  setSlotsLoading]  = useState(false)
   const [checkingOut,  setCheckingOut]   = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [leadTimeMins,  setLeadTimeMins]  = useState(15)  // default 15, overridden from settings
 
   const location    = savedLocations.find(sl => sl.location_id === locationId)?.location
   const subtotal    = subtotalCents()
@@ -115,7 +116,7 @@ export function CartPage() {
     // Pass local timezone offset (minutes behind UTC, e.g. CDT = 300) so the
     // edge function can compute "now" in local time rather than UTC
     const tzOffset = new Date().getTimezoneOffset()
-    const [slotsRes, taxRes] = await Promise.all([
+    const [slotsRes, taxRes, leadTimeRes] = await Promise.all([
       fetch(
         `${supabaseUrl}/functions/v1/get-available-slots?location_id=${locationId}&date=${today}&tz_offset=${tzOffset}`,
         { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
@@ -125,10 +126,21 @@ export function CartPage() {
         .select('rate_pct, applies_to')
         .eq('location_id', locationId)
         .eq('is_active', true),
+      supabase
+        .from('settings')
+        .select('value')
+        .eq('location_id', locationId)
+        .eq('key', 'remote_order_lead_time_minutes')
+        .maybeSingle(),
     ])
 
+    // Lead time from settings (default 15 min) + 2 min technical buffer
+    const configuredLeadTime = (leadTimeRes?.data as any)?.value ?? 15
+    const leadTime = Math.max(1, Number(configuredLeadTime)) + 2
+    setLeadTimeMins(leadTime)
+
     const now       = new Date()
-    const nowMins   = now.getHours() * 60 + now.getMinutes() + 15  // must be 15+ min from now
+    const nowMins   = now.getHours() * 60 + now.getMinutes() + leadTime
     const available = (slotsRes.slots ?? [])
       .filter((s: Slot) => !s.is_full)
       .map((s: Slot) => ({ ...s, start_time: normalizeSlotTime(s.start_time as any), end_time: normalizeSlotTime(s.end_time as any) }))
