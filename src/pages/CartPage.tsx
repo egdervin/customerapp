@@ -155,6 +155,19 @@ export function CartPage() {
     setCheckoutError(null)
     setCheckingOut(true)
 
+    // Re-validate the selected slot is still far enough away.
+    // The slot list was built when the page loaded — if the user spent time
+    // reviewing the cart, the slot may no longer meet the lead time threshold.
+    const nowMinsCheck = new Date().getHours() * 60 + new Date().getMinutes() + leadTimeMins
+    if (slotToMinutes(selectedSlot) < nowMinsCheck) {
+      setCheckoutError('That pickup time is no longer available — it's too soon. Please select a later time.')
+      setSelectedSlot(null)
+      setCheckingOut(false)
+      // Silently refresh the slot list so the updated available slots appear
+      loadSlotsAndTax()
+      return
+    }
+
     const scheduledAt = buildScheduledAt(today, selectedSlot)
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 
