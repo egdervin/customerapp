@@ -546,30 +546,55 @@ function TransactionsTab() {
 function OrdersTab() {
   const { customerProfile } = useAuthStore()
   const navigate = useNavigate()
-  const [orders, setOrders]   = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [orders, setOrders]     = useState<any[]>([])
+  const [loading, setLoading]   = useState(true)
 
   useEffect(() => {
     if (!customerProfile) return
     loadOrders()
+
+    // Subscribe to remote_orders changes for this customer — status updates
+    // from the KDS (via ticket server → Supabase) will arrive in real time.
+    const channel = supabase
+      .channel(`remote-orders-app-${customerProfile.id}`)
+      .on(
+        'postgres_changes' as any,
+        {
+          event:  'UPDATE',
+          schema: 'public',
+          table:  'remote_orders',
+          filter: `customer_id=eq.${customerProfile.id}`,
+        },
+        (payload: any) => {
+          // Patch the updated order in state — no full reload needed
+          setOrders(prev => prev.map(o =>
+            o.id === payload.new.id ? { ...o, status: payload.new.status } : o
+          ))
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [customerProfile])
 
   async function loadOrders() {
+    if (!customerProfile) return
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - 60)
     const { data } = await supabase
       .from('remote_orders')
       .select(`
-        id, order_number, state, pickup_slot, pickup_date, total_cents, created_at,
+        id, order_number, status, pickup_time,
+        total_cents, created_at,
         locations ( name ),
         remote_order_items ( product_name, quantity )
       `)
-      .eq('customer_id', customerProfile!.id)
+      .eq('customer_id', customerProfile.id)
       .gte('created_at', cutoff.toISOString())
       .order('created_at', { ascending: false })
       .limit(50)
 
-    // Deduplicate items
+    // Deduplicate items (same item may appear for multiple stations)
     const orders = (data ?? []).map((o: any) => {
       const seen = new Set<string>()
       const items = (o.remote_order_items ?? []).filter((i: any) => {
@@ -583,23 +608,26 @@ function OrdersTab() {
     setLoading(false)
   }
 
-  const STATE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
     pending:   { label: 'Processing',  color: '#92400e', bg: '#fffbeb' },
     confirmed: { label: 'Confirmed',   color: '#166534', bg: '#f0fdf4' },
     active:    { label: 'Being made',  color: '#1e40af', bg: '#eff6ff' },
-    completed: { label: 'Ready',       color: '#166534', bg: '#f0fdf4' },
+    completed: { label: 'Ready! ✓',   color: '#166534', bg: '#f0fdf4' },
     cancelled: { label: 'Cancelled',   color: '#991b1b', bg: '#fff1f2' },
   }
 
-  function formatTime(t: string): string {
-    const [h, m] = t.split(':').map(Number)
-    const ampm = h >= 12 ? 'pm' : 'am'
-    const h12  = h % 12 || 12
-    return m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`
+  function formatPickupTime(iso: string): string {
+    const d = new Date(iso)
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
   }
 
-  function formatDate(d: string): string {
-    return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  function formatPickupDate(iso: string): string {
+    const d = new Date(iso)
+    const today    = new Date()
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
+    if (d.toDateString() === today.toDateString())    return 'Today'
+    if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
   if (loading) return (
@@ -621,7 +649,7 @@ function OrdersTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
       {orders.map((order) => {
-        const st = STATE_LABELS[order.state] ?? { label: order.state, color: 'var(--pd-text-muted)', bg: 'var(--pd-gray-light)' }
+        const st = STATUS_LABELS[order.status] ?? { label: order.status, color: 'var(--pd-text-muted)', bg: 'var(--pd-gray-light)' }
         const itemSummary = order.remote_order_items
           .slice(0, 2)
           .map((i: any) => `${i.quantity}× ${i.product_name}`)
@@ -644,7 +672,7 @@ function OrdersTab() {
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>
-                #{order.order_number}
+                {order.order_number ? `#${order.order_number}` : 'Order'}
                 {order.locations && (
                   <span style={{ fontWeight: 400, color: 'var(--pd-text-muted)', marginLeft: 6 }}>
                     · {order.locations.name}
@@ -652,22 +680,22 @@ function OrdersTab() {
                 )}
               </p>
               <span style={{
-                fontSize: 12, fontWeight: 600, padding: '3px 10px',
-                borderRadius: 'var(--radius-full)',
-                background: st.bg, color: st.color,
+                fontSize: 'var(--text-xs)', fontWeight: 600,
+                color: st.color, background: st.bg,
+                padding: '3px 8px', borderRadius: 'var(--radius-sm)',
               }}>
                 {st.label}
               </span>
             </div>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)' }}>
-              {formatDate(order.pickup_date)} · {formatTime(order.pickup_slot)} pickup
-            </p>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {itemSummary}
-            </p>
-            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, textAlign: 'right' }}>
-              ${(order.total_cents / 100).toFixed(2)}
-            </p>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-text-muted)' }}>{itemSummary}</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)' }}>
+                {formatPickupDate(order.pickup_time)} · {formatPickupTime(order.pickup_time)}
+              </p>
+              <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
+                ${(order.total_cents / 100).toFixed(2)}
+              </p>
+            </div>
           </div>
         )
       })}
