@@ -136,6 +136,10 @@ function PaymentForm({ orderId, totalCents, pickupTime, onSuccess, onCancel }: P
       redirect: 'if_required',
     })
 
+    console.log('[Payment] error:', error)
+    console.log('[Payment] paymentIntent:', paymentIntent)
+    console.log('[Payment] status:', paymentIntent?.status)
+
     if (error) {
       // Card declined, insufficient funds, 3DS failed, etc.
       setPayError(error.message ?? 'Payment failed. Please try a different card.')
