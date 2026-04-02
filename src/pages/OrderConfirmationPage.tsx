@@ -6,7 +6,7 @@ interface OrderDetail {
   id:               string
   order_number:     string | null
   status:           string
-  pickup_time:      string   // ISO timestamp
+  pickup_time:      string
   total_cents:      number
   subtotal_cents:   number
   tax_cents:        number
@@ -33,10 +33,7 @@ function formatTime(t: string): string {
   return m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`
 }
 
-
 // Detect whether we're running inside the installed PWA (standalone) or in a regular browser.
-// When Square redirects back after payment, the confirmation URL opens in Safari — not the PWA.
-// We use this flag to render different CTAs for each context.
 function getIsStandalone(): boolean {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
@@ -45,25 +42,37 @@ function getIsStandalone(): boolean {
 }
 
 export function OrderConfirmationPage() {
-  const navigate          = useNavigate()
-  const [params]          = useSearchParams()
-  const orderId           = params.get('order_id')
-  const isStandalone      = getIsStandalone()
+  const navigate         = useNavigate()
+  const [params]         = useSearchParams()
+  const orderId          = params.get('order_id')
+  const isStandalone     = getIsStandalone()
 
-  const [order,    setOrder]    = useState<OrderDetail | null>(null)
-  const [loading,  setLoading]  = useState(true)
-  // 'notfound' = genuinely missing, 'autherror' = session missing (expected in Safari context)
-  const [errorKind, setErrorKind] = useState<'notfound' | 'autherror' | null>(null)
+  // Stripe appends these query params when redirecting back after a 3DS/bank flow
+  const redirectStatus   = params.get('redirect_status')   // 'succeeded' | 'failed' | 'canceled'
+
+  const [order,     setOrder]     = useState<OrderDetail | null>(null)
+  const [loading,   setLoading]   = useState(true)
+  // 'notfound'  = genuinely missing order ID
+  // 'autherror' = order exists but we can't load details (session missing outside PWA)
+  // 'paymentfailed' = Stripe redirect came back with status != succeeded
+  const [errorKind, setErrorKind] = useState<'notfound' | 'autherror' | 'paymentfailed' | null>(null)
 
   useEffect(() => {
-    if (!orderId) { setErrorKind('notfound'); setLoading(false); return }
-    // Always attempt the query. If it succeeds we show the full receipt.
-    // If it fails for any reason (RLS blocks anon access in Safari, session
-    // missing, network error, etc.) we show the success fallback — we know
-    // Square only sends this redirect URL after a confirmed payment, so
-    // "payment succeeded but we can't load details" is always the right message.
+    if (!orderId) {
+      setErrorKind('notfound')
+      setLoading(false)
+      return
+    }
+
+    // If Stripe redirected back with a non-success status, show payment failed
+    if (redirectStatus && redirectStatus !== 'succeeded') {
+      setErrorKind('paymentfailed')
+      setLoading(false)
+      return
+    }
+
     loadOrder()
-  }, [orderId])
+  }, [orderId, redirectStatus])
 
   async function loadOrder() {
     try {
@@ -78,23 +87,16 @@ export function OrderConfirmationPage() {
         .eq('id', orderId)
         .single()
 
-      if (error) {
-        // Any query error → show success fallback (not "order not found")
-        // We know Square only sends this URL after confirmed payment.
+      if (error || !data) {
+        // Any query error — most likely RLS blocking anon access when the page
+        // loads outside the PWA session. Payment already succeeded (we only
+        // navigate here on confirmed payment), so show a warm success fallback.
         setErrorKind('autherror')
         setLoading(false)
         return
       }
 
-      if (!data) {
-        // 0 rows = RLS blocked anon access (common when page loads outside PWA session)
-        // Still show success fallback, not "not found"
-        setErrorKind('autherror')
-        setLoading(false)
-        return
-      }
-
-      // Deduplicate items — remote_order_items may have one row per station per item
+      // Deduplicate items
       const raw  = data as any
       const seen = new Set<string>()
       const dedupedItems = (raw.remote_order_items ?? []).filter((item: any) => {
@@ -105,14 +107,13 @@ export function OrderConfirmationPage() {
 
       setOrder({ ...raw, remote_order_items: dedupedItems })
       setLoading(false)
-    } catch (e) {
-      // Network or parse error — still show success fallback
+    } catch {
       setErrorKind('autherror')
       setLoading(false)
     }
   }
 
-  // ─── Loading ────────────────────────────────────────────────────────────────
+  // ─── Loading ─────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -123,19 +124,47 @@ export function OrderConfirmationPage() {
     )
   }
 
-  // ─── Auth error fallback (loaded in Safari, no PWA session) ─────────────────
-  // We know the order succeeded (Square confirmed it), we just can't query details.
+  // ─── Payment failed (3DS redirect came back failed / canceled) ────────────────
+
+  if (errorKind === 'paymentfailed') {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--pd-off-white)', padding: 'var(--page-px)', textAlign: 'center', gap: 'var(--space-lg)', maxWidth: 480, margin: '0 auto' }}>
+        <div style={{ width: 80, height: 80, background: '#fee2e2', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>
+          ✕
+        </div>
+        <div>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', color: 'var(--pd-text)', lineHeight: 1.2 }}>
+            Payment not completed
+          </p>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-text-muted)', marginTop: 8 }}>
+            Your card was not charged. Please go back and try again.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate(-1)}
+          style={{
+            background: 'var(--pd-green-dark)', color: '#fff', border: 'none',
+            borderRadius: 'var(--radius-md)', padding: '16px 40px',
+            fontSize: 'var(--text-base)', fontWeight: 700, fontFamily: 'var(--font-body)',
+            cursor: 'pointer', width: '100%', maxWidth: 360,
+          }}
+        >
+          ← Back to cart
+        </button>
+      </div>
+    )
+  }
+
+  // ─── Auth error fallback (loaded outside PWA session, no Supabase access) ─────
+  // Payment already succeeded — we only land here from a confirmed payment.
   // Show a warm confirmation and tell the user to return to the app.
 
   if (errorKind === 'autherror') {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--pd-off-white)', padding: 'var(--page-px)', textAlign: 'center', gap: 'var(--space-lg)' }}>
-
-        {/* Success icon */}
         <div style={{ width: 80, height: 80, background: 'var(--pd-green-dark)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>
           ✓
         </div>
-
         <div>
           <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', color: 'var(--pd-text)', lineHeight: 1.2 }}>
             Order Placed!
@@ -149,19 +178,11 @@ export function OrderConfirmationPage() {
             </p>
           )}
         </div>
-
-        {/* Return-to-app banner */}
         <div style={{
-          background: 'var(--pd-green-light)',
-          border: '1px solid #86efac',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-lg)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 12,
-          width: '100%',
-          maxWidth: 360,
+          background: 'var(--pd-green-light)', border: '1px solid #86efac',
+          borderRadius: 'var(--radius-md)', padding: 'var(--space-lg)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+          width: '100%', maxWidth: 360,
         }}>
           <p style={{ fontSize: 28 }}>☝️</p>
           <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--pd-green-dark)', lineHeight: 1.4 }}>
@@ -169,22 +190,13 @@ export function OrderConfirmationPage() {
             where you can view your full order details.
           </p>
         </div>
-
-        {/* Attempt to close this browser window (works when opened via window.open) */}
         <button
           onClick={() => { try { window.close() } catch (_) {} }}
           style={{
-            background: 'var(--pd-green-dark)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            padding: '16px 40px',
-            fontSize: 'var(--text-base)',
-            fontWeight: 700,
-            fontFamily: 'var(--font-body)',
-            cursor: 'pointer',
-            width: '100%',
-            maxWidth: 360,
+            background: 'var(--pd-green-dark)', color: '#fff', border: 'none',
+            borderRadius: 'var(--radius-md)', padding: '16px 40px',
+            fontSize: 'var(--text-base)', fontWeight: 700, fontFamily: 'var(--font-body)',
+            cursor: 'pointer', width: '100%', maxWidth: 360,
           }}
         >
           Done
@@ -193,7 +205,7 @@ export function OrderConfirmationPage() {
     )
   }
 
-  // ─── Genuinely not found ────────────────────────────────────────────────────
+  // ─── Genuinely not found ──────────────────────────────────────────────────────
 
   if (errorKind === 'notfound' || !order) {
     return (
@@ -207,7 +219,7 @@ export function OrderConfirmationPage() {
     )
   }
 
-  // ─── Full receipt (loaded inside the PWA — standalone mode) ─────────────────
+  // ─── Full receipt ─────────────────────────────────────────────────────────────
 
   const isPending   = order.status === 'pending'
   const isConfirmed = order.status === 'confirmed' || order.status === 'active'
@@ -218,29 +230,15 @@ export function OrderConfirmationPage() {
       {/* Success header */}
       <div style={{
         background: 'var(--pd-green-dark)',
-        paddingTop: 'calc(var(--safe-top) + 32px)',
-        paddingBottom: 32,
-        paddingLeft: 'var(--page-px)',
-        paddingRight: 'var(--page-px)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center',
-        gap: 12,
+        paddingTop: 'calc(var(--safe-top) + 32px)', paddingBottom: 32,
+        paddingLeft: 'var(--page-px)', paddingRight: 'var(--page-px)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12,
       }}>
-        <div style={{
-          width: 72, height: 72,
-          background: 'var(--pd-yellow)',
-          borderRadius: '50%',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 36,
-        }}>
+        <div style={{ width: 72, height: 72, background: 'var(--pd-yellow)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36 }}>
           ✓
         </div>
         <div>
-          <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', color: '#fff', lineHeight: 1.2 }}>
-            Order Placed!
-          </p>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)', color: '#fff', lineHeight: 1.2 }}>Order Placed!</p>
           <p style={{ color: 'var(--pd-yellow)', fontSize: 'var(--text-base)', fontWeight: 700, marginTop: 4 }}>
             #{order.order_number}
           </p>
@@ -275,14 +273,13 @@ export function OrderConfirmationPage() {
         <div style={{
           background: isPending ? '#fffbeb' : 'var(--pd-green-light)',
           border: `1px solid ${isPending ? '#fde68a' : '#86efac'}`,
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-md)',
+          borderRadius: 'var(--radius-md)', padding: 'var(--space-md)',
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
           <span style={{ fontSize: 20 }}>{isPending ? '⏳' : '✅'}</span>
           <p style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: isPending ? '#92400e' : 'var(--pd-green-dark)' }}>
             {isPending
-              ? "Payment processing… we'll have your order shortly."
+              ? 'Payment processing… we\'ll have your order shortly.'
               : 'Payment confirmed — your order is on its way!'
             }
           </p>
@@ -337,29 +334,20 @@ export function OrderConfirmationPage() {
         </div>
       </div>
 
-      {/* Sticky bottom nav — PWA context only */}
+      {/* Sticky bottom nav */}
       <div style={{
-        position: 'fixed',
-        bottom: 0, left: '50%', transform: 'translateX(-50%)',
+        position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
         width: '100%', maxWidth: 480,
         padding: `var(--space-md) var(--page-px) calc(var(--safe-bottom) + var(--space-md))`,
         background: 'linear-gradient(to top, var(--pd-off-white) 80%, transparent)',
-        zIndex: 20,
-        display: 'flex', gap: 'var(--space-sm)',
+        zIndex: 20, display: 'flex', gap: 'var(--space-sm)',
       }}>
         <button
           onClick={() => navigate('/home?tab=order')}
           style={{
-            flex: 1,
-            background: 'var(--pd-yellow)',
-            color: 'var(--pd-green-dark)',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            padding: 16,
-            fontSize: 'var(--text-base)',
-            fontWeight: 700,
-            fontFamily: 'var(--font-body)',
-            cursor: 'pointer',
+            flex: 1, background: 'var(--pd-yellow)', color: 'var(--pd-green-dark)', border: 'none',
+            borderRadius: 'var(--radius-md)', padding: 16, fontSize: 'var(--text-base)',
+            fontWeight: 700, fontFamily: 'var(--font-body)', cursor: 'pointer',
           }}
         >
           View Orders
@@ -367,16 +355,9 @@ export function OrderConfirmationPage() {
         <button
           onClick={() => navigate('/home')}
           style={{
-            flex: 1,
-            background: 'var(--pd-green-dark)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            padding: 16,
-            fontSize: 'var(--text-base)',
-            fontWeight: 700,
-            fontFamily: 'var(--font-body)',
-            cursor: 'pointer',
+            flex: 1, background: 'var(--pd-green-dark)', color: '#fff', border: 'none',
+            borderRadius: 'var(--radius-md)', padding: 16, fontSize: 'var(--text-base)',
+            fontWeight: 700, fontFamily: 'var(--font-body)', cursor: 'pointer',
           }}
         >
           Home

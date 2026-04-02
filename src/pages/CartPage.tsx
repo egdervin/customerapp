@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { supabase } from '../lib/supabase'
+import { stripePromise } from '../lib/stripe'
 import { useCartStore } from '../stores/cartStore'
 import { useAuthStore } from '../stores/authStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Slot {
-  start_time:   string   // "HH:MM"
+  start_time:   string
   end_time:     string
   max_capacity: number
   booked:       number
@@ -44,13 +46,10 @@ function formatTime(t: string): string {
 }
 
 function getTodayDateStr(): string {
-  // Use local date, NOT toISOString() which is UTC and would give the wrong date
-  // for users who are behind UTC (e.g. CDT = UTC-5)
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// Normalize a time value (HH:MM, HH:MM:SS, or numeric minutes) to "HH:MM"
 function normalizeSlotTime(t: string | number): string {
   let h: number, m: number
   if (typeof t === 'number') {
@@ -74,8 +73,193 @@ function slotToMinutes(t: string): number {
 }
 
 function buildScheduledAt(dateStr: string, slotStart: string): string {
-  // Combine date + slot start time into ISO string (local time)
   return new Date(`${dateStr}T${slotStart}:00`).toISOString()
+}
+
+// ─── Stripe appearance — matches Plusdine colour palette ──────────────────────
+
+const stripeAppearance = {
+  theme: 'stripe' as const,
+  variables: {
+    colorPrimary:        '#166534',   // --pd-green-dark
+    colorBackground:     '#ffffff',
+    colorText:           '#111827',
+    colorDanger:         '#b91c1c',
+    fontFamily:          'system-ui, sans-serif',
+    borderRadius:        '8px',
+    spacingUnit:         '4px',
+  },
+  rules: {
+    '.Label':       { fontWeight: '600', color: '#374151' },
+    '.Input':       { border: '1.5px solid #d1d5db', padding: '10px 12px' },
+    '.Input:focus': { border: '1.5px solid #166534', boxShadow: '0 0 0 2px rgba(22,101,52,0.15)' },
+  },
+}
+
+// ─── PaymentForm — inner component, must be child of <Elements> ───────────────
+
+interface PaymentFormProps {
+  orderId:     string
+  totalCents:  number
+  pickupTime:  string
+  onSuccess:   (orderId: string) => void
+  onCancel:    () => void
+}
+
+function PaymentForm({ orderId, totalCents, pickupTime, onSuccess, onCancel }: PaymentFormProps) {
+  const stripe   = useStripe()
+  const elements = useElements()
+
+  const [paying,   setPaying]   = useState(false)
+  const [payError, setPayError] = useState<string | null>(null)
+
+  async function handlePay() {
+    if (!stripe || !elements) return
+    setPayError(null)
+    setPaying(true)
+
+    // Validate the PaymentElement fields before submitting
+    const { error: submitError } = await elements.submit()
+    if (submitError) {
+      setPayError(submitError.message ?? 'Please check your payment details.')
+      setPaying(false)
+      return
+    }
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        // Stripe redirects here for payment methods that require a redirect (e.g. 3DS).
+        // For standard card payments, redirect: 'if_required' prevents the redirect.
+        return_url: `${window.location.origin}/order-confirmation?order_id=${orderId}`,
+      },
+      redirect: 'if_required',
+    })
+
+    if (error) {
+      // Card declined, insufficient funds, 3DS failed, etc.
+      setPayError(error.message ?? 'Payment failed. Please try a different card.')
+      setPaying(false)
+      return
+    }
+
+    if (paymentIntent?.status === 'succeeded' || paymentIntent?.status === 'processing') {
+      // Success — the webhook will confirm server-side; navigate to confirmation
+      onSuccess(orderId)
+    } else {
+      setPayError('Payment did not complete. Please try again.')
+      setPaying(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+
+      {/* Order summary recap */}
+      <div style={{
+        background:    'var(--pd-white)',
+        borderRadius:  'var(--radius-md)',
+        border:        '1px solid var(--pd-gray-light)',
+        padding:       'var(--space-md) var(--space-lg)',
+        display:       'flex',
+        justifyContent:'space-between',
+        alignItems:    'center',
+      }}>
+        <div>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--pd-text-muted)' }}>Pickup</p>
+          <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{formatTime(pickupTime)}</p>
+        </div>
+        <p style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: 'var(--pd-green-dark)' }}>
+          {formatCents(totalCents)}
+        </p>
+      </div>
+
+      {/* Stripe PaymentElement */}
+      <div style={{
+        background:   'var(--pd-white)',
+        borderRadius: 'var(--radius-md)',
+        border:       '1px solid var(--pd-gray-light)',
+        padding:      'var(--space-lg)',
+      }}>
+        <p style={{
+          fontSize:      'var(--text-xs)',
+          fontWeight:    600,
+          color:         'var(--pd-text-muted)',
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          marginBottom:  'var(--space-md)',
+        }}>
+          Payment
+        </p>
+        <PaymentElement
+          options={{
+            layout: { type: 'tabs', defaultCollapsed: false },
+          }}
+        />
+      </div>
+
+      {/* Error */}
+      {payError && (
+        <div style={{
+          background:   '#fff0ef',
+          border:       '1px solid #fca5a5',
+          borderRadius: 'var(--radius-md)',
+          padding:      'var(--space-md)',
+          fontSize:     'var(--text-sm)',
+          color:        '#b91c1c',
+        }}>
+          {payError}
+        </div>
+      )}
+
+      {/* Buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+        <button
+          onClick={handlePay}
+          disabled={!stripe || paying}
+          style={{
+            width:        '100%',
+            background:   (!stripe || paying) ? 'var(--pd-gray-mid)' : 'var(--pd-yellow)',
+            color:        (!stripe || paying) ? 'var(--pd-gray)' : 'var(--pd-green-dark)',
+            border:       'none',
+            borderRadius: 'var(--radius-md)',
+            padding:      18,
+            fontSize:     'var(--text-base)',
+            fontWeight:   700,
+            fontFamily:   'var(--font-body)',
+            cursor:       (!stripe || paying) ? 'not-allowed' : 'pointer',
+            opacity:      paying ? 0.7 : 1,
+            transition:   'all 0.15s ease',
+          }}
+        >
+          {paying ? 'Processing…' : `Pay ${formatCents(totalCents)}`}
+        </button>
+
+        <button
+          onClick={onCancel}
+          disabled={paying}
+          style={{
+            width:        '100%',
+            background:   'transparent',
+            color:        'var(--pd-text-muted)',
+            border:       '1.5px solid var(--pd-gray-light)',
+            borderRadius: 'var(--radius-md)',
+            padding:      14,
+            fontSize:     'var(--text-sm)',
+            fontWeight:   600,
+            fontFamily:   'var(--font-body)',
+            cursor:       paying ? 'not-allowed' : 'pointer',
+          }}
+        >
+          ← Back to cart
+        </button>
+      </div>
+
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', textAlign: 'center' }}>
+        Payments are secure and encrypted
+      </p>
+    </div>
+  )
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -85,21 +269,29 @@ export function CartPage() {
   const { customerProfile, savedLocations, session } = useAuthStore()
   const { items, locationId, menuId, removeItem, updateQty, clearCart, subtotalCents } = useCartStore()
 
+  // ── Cart / slot state ──────────────────────────────────────────────────────
   const [slots,         setSlots]         = useState<Slot[]>([])
-  const [selectedSlot,  setSelectedSlot]  = useState<string | null>(null)   // "HH:MM"
+  const [selectedSlot,  setSelectedSlot]  = useState<string | null>(null)
   const [taxRates,      setTaxRates]      = useState<TaxRate[]>([])
   const [slotsLoading,  setSlotsLoading]  = useState(false)
-  const [checkingOut,  setCheckingOut]   = useState(false)
-  const [checkoutError, setCheckoutError] = useState<string | null>(null)
-  const [leadTimeMins,  setLeadTimeMins]  = useState(15)  // default 15, overridden from settings
+  const [leadTimeMins,  setLeadTimeMins]  = useState(15)
 
-  const location    = savedLocations.find(sl => sl.location_id === locationId)?.location
-  const subtotal    = subtotalCents()
-  const taxRatePct  = taxRates.filter(r => r.applies_to === 'all' || r.applies_to === 'food')
-                               .reduce((s, r) => s + Number(r.rate_pct), 0)
-  const taxCents    = Math.round(subtotal * taxRatePct / 100)
-  const totalCents  = subtotal + taxCents
-  const today       = getTodayDateStr()
+  // ── Checkout state ─────────────────────────────────────────────────────────
+  // 'cart'      — cart review + slot picker
+  // 'preparing' — edge function in-flight (creating order + PaymentIntent)
+  // 'payment'   — Stripe PaymentElement shown
+  const [checkoutStep,  setCheckoutStep]  = useState<'cart' | 'preparing' | 'payment'>('cart')
+  const [clientSecret,  setClientSecret]  = useState<string | null>(null)
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+
+  const location   = savedLocations.find(sl => sl.location_id === locationId)?.location
+  const subtotal   = subtotalCents()
+  const taxRatePct = taxRates.filter(r => r.applies_to === 'all' || r.applies_to === 'food')
+                              .reduce((s, r) => s + Number(r.rate_pct), 0)
+  const taxCents   = Math.round(subtotal * taxRatePct / 100)
+  const totalCents = subtotal + taxCents
+  const today      = getTodayDateStr()
 
   useEffect(() => {
     if (!locationId) return
@@ -112,10 +304,8 @@ export function CartPage() {
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    const tzOffset    = new Date().getTimezoneOffset()
 
-    // Pass local timezone offset (minutes behind UTC, e.g. CDT = 300) so the
-    // edge function can compute "now" in local time rather than UTC
-    const tzOffset = new Date().getTimezoneOffset()
     const [slotsRes, taxRes, leadTimeRes] = await Promise.all([
       fetch(
         `${supabaseUrl}/functions/v1/get-available-slots?location_id=${locationId}&date=${today}&tz_offset=${tzOffset}`,
@@ -134,7 +324,6 @@ export function CartPage() {
         .maybeSingle(),
     ])
 
-    // Lead time from settings (default 15 min) + 2 min technical buffer
     const configuredLeadTime = (leadTimeRes?.data as any)?.value ?? 15
     const leadTime = Math.max(1, Number(configuredLeadTime)) + 2
     setLeadTimeMins(leadTime)
@@ -143,64 +332,53 @@ export function CartPage() {
     const nowMins   = now.getHours() * 60 + now.getMinutes() + leadTime
     const available = (slotsRes.slots ?? [])
       .filter((s: Slot) => !s.is_full)
-      .map((s: Slot) => ({ ...s, start_time: normalizeSlotTime(s.start_time as any), end_time: normalizeSlotTime(s.end_time as any) }))
+      .map((s: Slot) => ({
+        ...s,
+        start_time: normalizeSlotTime(s.start_time as any),
+        end_time:   normalizeSlotTime(s.end_time as any),
+      }))
       .filter((s: Slot) => slotToMinutes(s.start_time) >= nowMins)
+
     setSlots(available)
     setTaxRates((taxRes.data ?? []) as TaxRate[])
     setSlotsLoading(false)
   }
 
-  async function handleCheckout() {
+  // ── Step 1: validate slot + call create-remote-order ──────────────────────
+  async function handleProceedToPayment() {
     if (!selectedSlot || !locationId || !menuId || !customerProfile) return
     setCheckoutError(null)
-    setCheckingOut(true)
 
-    // Re-validate the selected slot is still far enough away.
-    // The slot list was built when the page loaded — if the user spent time
-    // reviewing the cart, the slot may no longer meet the lead time threshold.
+    // Re-validate the slot hasn't aged past the lead time threshold
     const nowMinsCheck = new Date().getHours() * 60 + new Date().getMinutes() + leadTimeMins
     if (slotToMinutes(selectedSlot) < nowMinsCheck) {
-      setCheckoutError('That pickup time is no longer available — it's too soon. Please select a later time.')
+      setCheckoutError("That pickup time is no longer available — it's too soon. Please select a later time.")
       setSelectedSlot(null)
-      setCheckingOut(false)
-      // Silently refresh the slot list so the updated available slots appear
       loadSlotsAndTax()
       return
     }
 
-    const scheduledAt = buildScheduledAt(today, selectedSlot)
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-
-    // Use the session already held in Zustand — no async storage calls needed.
     const accessToken = session?.access_token ?? null
-    console.log('[Checkout] Token from store:', accessToken ? 'present' : 'missing')
-
     if (!accessToken) {
       setCheckoutError('Your session has expired. Please sign out and sign in again.')
-      setCheckingOut(false)
       return
     }
 
-    // Decode JWT expiry without any async calls — JWT payload is just base64
     try {
       const payload = JSON.parse(atob(accessToken.split('.')[1]))
-      const expiresAt = (payload.exp ?? 0) * 1000   // convert to ms
-      const nowMs     = Date.now()
-      console.log('[Checkout] Token expires at:', new Date(expiresAt).toISOString(), '— now:', new Date(nowMs).toISOString())
-      if (expiresAt < nowMs + 30_000) {
-        // Expired or expires within 30s — don't even try, prompt re-login
+      if ((payload.exp ?? 0) * 1000 < Date.now() + 30_000) {
         setCheckoutError('Your session has expired. Please sign out and sign in again to place your order.')
-        setCheckingOut(false)
         return
       }
-    } catch {
-      console.warn('[Checkout] Could not decode JWT — proceeding anyway')
-    }
+    } catch { /* proceed */ }
 
-    console.log('[Checkout] Calling edge function…')
+    setCheckoutStep('preparing')
+
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    const scheduledAt = buildScheduledAt(today, selectedSlot)
+
     try {
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-    console.log('[Checkout] Fetching create-remote-order…')
       const res = await fetch(`${supabaseUrl}/functions/v1/create-remote-order`, {
         method:  'POST',
         headers: {
@@ -225,53 +403,51 @@ export function CartPage() {
         }),
       })
 
-      console.log('[Checkout] Edge function responded:', res.status)
       const data = await res.json()
 
       if (res.status === 401) {
-        setCheckoutError('Your session has expired. Please sign out and sign in again to place your order.')
-        setCheckingOut(false)
+        setCheckoutError('Your session has expired. Please sign out and sign in again.')
+        setCheckoutStep('cart')
         return
       }
-
       if (!res.ok) {
-        setCheckoutError(data.error ?? 'Checkout failed. Please try again.')
-        setCheckingOut(false)
+        setCheckoutError(data.error ?? 'Could not start checkout. Please try again.')
+        setCheckoutStep('cart')
         return
       }
 
-      const checkoutUrl = data.checkout_url || data.long_url
-      console.log('[Plusdine] Square checkout URL:', checkoutUrl)
+      // Edge function returns { order_id, client_secret }
+      setClientSecret(data.client_secret)
+      setPendingOrderId(data.order_id)
+      setCheckoutStep('payment')
 
-      if (!checkoutUrl) {
-        setCheckoutError('Payment link unavailable. Please try again.')
-        setCheckingOut(false)
-        return
-      }
-
-      // Open Square FIRST, then clear the cart.
-      // Clearing first triggers items.length === 0 → empty-cart screen renders
-      // immediately, before Safari has even opened — jarring for the user.
-      // Use window.open so PWA scope restrictions don't block the navigation.
-      const opened = window.open(checkoutUrl, '_blank')
-      if (!opened) {
-        // Popup was blocked — fall back to same-tab navigation
-        window.location.assign(checkoutUrl)
-      }
-      clearCart()
-      // Reset button in case user returns to this tab (e.g. opened in new tab)
-      setTimeout(() => setCheckingOut(false), 3000)
-
-    } catch (e) {
+    } catch {
       setCheckoutError('Network error. Please check your connection and try again.')
-      setCheckingOut(false)
+      setCheckoutStep('cart')
     }
   }
 
-  // Don't show the empty-cart screen while checkout is in progress —
-  // the cart clears as soon as window.open fires, but the user is still
-  // transitioning to Square. Let the "Opening payment…" button state show instead.
-  if (items.length === 0 && !checkingOut) {
+  // ── Step 2: Stripe confirmed payment ──────────────────────────────────────
+  function handlePaymentSuccess(orderId: string) {
+    clearCart()
+    navigate(`/order-confirmation?order_id=${orderId}`)
+  }
+
+  // ── Back button from payment step ─────────────────────────────────────────
+  // Note: we can't reuse the PaymentIntent after going back — the next attempt
+  // will create a new order + PI. The abandoned 'unpaid' order will be cleaned
+  // up by a scheduled maintenance job (to be added later).
+  function handleBackToCart() {
+    setCheckoutStep('cart')
+    setClientSecret(null)
+    setPendingOrderId(null)
+    setCheckoutError(null)
+  }
+
+  // ─── Empty cart guard ──────────────────────────────────────────────────────
+  // Don't show while we're mid-checkout (preparing or payment step) because the
+  // cart clears on success and we don't want to flicker to the empty screen.
+  if (items.length === 0 && checkoutStep === 'cart') {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column',
@@ -305,6 +481,61 @@ export function CartPage() {
       </div>
     )
   }
+
+  // ─── Payment step ──────────────────────────────────────────────────────────
+  if (checkoutStep === 'payment' && clientSecret && pendingOrderId) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        background: 'var(--pd-off-white)', maxWidth: 480, margin: '0 auto',
+      }}>
+        <header style={{
+          background: 'var(--pd-green-dark)',
+          paddingTop: 'calc(var(--safe-top) + 14px)',
+          paddingBottom: 14,
+          paddingLeft: 'var(--page-px)', paddingRight: 'var(--page-px)',
+          display: 'flex', alignItems: 'center', gap: 12,
+          position: 'sticky', top: 0, zIndex: 20,
+        }}>
+          <button
+            onClick={handleBackToCart}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 22, padding: '4px 0' }}
+          >
+            ←
+          </button>
+          <p style={{ color: '#fff', fontWeight: 700, fontSize: 'var(--text-base)', flex: 1 }}>
+            Payment
+          </p>
+        </header>
+
+        <div style={{
+          flex: 1,
+          padding: 'var(--space-lg) var(--page-px)',
+          paddingBottom: 'calc(var(--safe-bottom) + var(--space-lg))',
+          overflowY: 'auto',
+        }}>
+          <Elements
+            stripe={stripePromise}
+            options={{
+              clientSecret,
+              appearance: stripeAppearance,
+            }}
+          >
+            <PaymentForm
+              orderId={pendingOrderId}
+              totalCents={totalCents}
+              pickupTime={selectedSlot!}
+              onSuccess={handlePaymentSuccess}
+              onCancel={handleBackToCart}
+            />
+          </Elements>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Cart step (default) ───────────────────────────────────────────────────
+  const isPreparing = checkoutStep === 'preparing'
 
   return (
     <div style={{
@@ -356,14 +587,13 @@ export function CartPage() {
                   <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--pd-text)' }}>{item.product_name}</p>
                   {item.modifiers.length > 0 && (
                     <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', marginTop: 2 }}>
-                      {item.modifiers.map(m => m.name).join(', ')}
+                      {item.modifiers.map((m: any) => m.name).join(', ')}
                     </p>
                   )}
                   <p style={{ fontSize: 'var(--text-xs)', color: 'var(--pd-text-muted)', marginTop: 2 }}>
                     {formatCents(item.unit_price)} each
                   </p>
                 </div>
-                {/* Qty controls */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                   <button
                     onClick={() => updateQty(item.menu_item_id, item.quantity - 1)}
@@ -374,9 +604,7 @@ export function CartPage() {
                       fontSize: 18, color: 'var(--pd-text)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
-                  >
-                    −
-                  </button>
+                  >−</button>
                   <span style={{ fontSize: 'var(--text-base)', fontWeight: 700, minWidth: 20, textAlign: 'center' }}>
                     {item.quantity}
                   </span>
@@ -389,12 +617,10 @@ export function CartPage() {
                       fontSize: 18, color: 'var(--pd-text)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
-                  >
-                    +
-                  </button>
+                  >+</button>
                 </div>
                 <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, minWidth: 52, textAlign: 'right', flexShrink: 0 }}>
-                  {formatCents((item.unit_price + item.modifiers.reduce((s, m) => s + m.price_delta, 0)) * item.quantity)}
+                  {formatCents((item.unit_price + item.modifiers.reduce((s: number, m: any) => s + m.price_delta, 0)) * item.quantity)}
                 </p>
               </div>
             ))}
@@ -494,8 +720,8 @@ export function CartPage() {
         zIndex: 20,
       }}>
         <button
-          onClick={handleCheckout}
-          disabled={!selectedSlot || checkingOut}
+          onClick={handleProceedToPayment}
+          disabled={!selectedSlot || isPreparing}
           style={{
             width: '100%',
             background: selectedSlot ? 'var(--pd-yellow)' : 'var(--pd-gray-mid)',
@@ -508,14 +734,14 @@ export function CartPage() {
             fontFamily: 'var(--font-body)',
             cursor: selectedSlot ? 'pointer' : 'not-allowed',
             transition: 'all 0.15s ease',
-            opacity: checkingOut ? 0.7 : 1,
+            opacity: isPreparing ? 0.7 : 1,
           }}
         >
-          {checkingOut
-            ? 'Opening payment…'
+          {isPreparing
+            ? 'Preparing checkout…'
             : !selectedSlot
               ? 'Select a pickup time'
-              : `Pay ${formatCents(totalCents)} · ${formatTime(selectedSlot)} pickup`
+              : `Continue to payment · ${formatTime(selectedSlot)}`
           }
         </button>
       </div>
