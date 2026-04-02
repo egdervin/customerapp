@@ -433,8 +433,8 @@ export function CartPage() {
 
   // ── Step 2: Stripe confirmed payment ──────────────────────────────────────
   function handlePaymentSuccess(orderId: string) {
-    clearCart()
     navigate(`/order-confirmation?order_id=${orderId}`)
+    clearCart()
   }
 
   // ── Back button from payment step ─────────────────────────────────────────
