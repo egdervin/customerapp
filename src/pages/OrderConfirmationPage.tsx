@@ -221,8 +221,6 @@ export function OrderConfirmationPage() {
 
   // ─── Full receipt ─────────────────────────────────────────────────────────────
 
-  const isPending   = order.status === 'pending'
-  const isConfirmed = order.status === 'confirmed' || order.status === 'active'
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--pd-off-white)', maxWidth: 480, margin: '0 auto' }}>
@@ -271,17 +269,14 @@ export function OrderConfirmationPage() {
 
         {/* Status */}
         <div style={{
-          background: isPending ? '#fffbeb' : 'var(--pd-green-light)',
-          border: `1px solid ${isPending ? '#fde68a' : '#86efac'}`,
+          background: 'var(--pd-green-light)',
+          border: '1px solid #86efac',
           borderRadius: 'var(--radius-md)', padding: 'var(--space-md)',
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
-          <span style={{ fontSize: 20 }}>{isPending ? '⏳' : '✅'}</span>
-          <p style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: isPending ? '#92400e' : 'var(--pd-green-dark)' }}>
-            {isPending
-              ? 'Payment processing… we\'ll have your order shortly.'
-              : 'Payment confirmed — your order is on its way!'
-            }
+          <span style={{ fontSize: 20 }}>✅</span>
+          <p style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--pd-green-dark)' }}>
+            Payment confirmed — your order is being prepared!
           </p>
         </div>
 
